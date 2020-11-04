@@ -2,13 +2,7 @@
 Tools for using marshmallow/toastedmarshmallow for json->obj->json marshalling stuff.
 """
 
-import toastedmarshmallow
 from marshmallow import Schema, fields, post_load
-
-
-class JitSchema(Schema):
-    class Meta:
-        jit = toastedmarshmallow.Jit
 
 
 class JsonSerializationException(Exception):
@@ -19,7 +13,7 @@ class JsonDeserializationException(Exception):
     pass
 
 
-class JsonMappedMixin(object):
+class JsonSerializable:
     """
     Simple type wrapper mixin for json serialize/deserialize of objects to reduce boilerplate.
 
