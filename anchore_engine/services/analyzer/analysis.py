@@ -23,9 +23,8 @@ def is_analysis_message(payload_json: dict) -> bool:
         return False
 
 
-def perform_analyze(userId, manifest, image_record, registry_creds, layer_cache_enable=False, parent_manifest=None):
+def perform_analyze(account, manifest, image_record, registry_creds, layer_cache_enable=False, parent_manifest=None):
     ret_analyze = {}
-    ret_query = {}
 
     localconfig = get_config()
     try:
@@ -52,12 +51,12 @@ def perform_analyze(userId, manifest, image_record, registry_creds, layer_cache_
 
     timer = int(time.time())
     logger.spew("timing: analyze start: " + str(int(time.time()) - timer))
-    logger.info("performing analysis on image: " + str([userId, pullstring, fulltag]))
+    logger.info("performing analysis on image: " + str([account, pullstring, fulltag]))
 
     logger.debug("obtaining anchorelock..." + str(pullstring))
     with anchore_engine.clients.localanchore_standalone.get_anchorelock(lockId=pullstring, driver='nodocker'):
         logger.debug("obtaining anchorelock successful: " + str(pullstring))
-        analyzed_image_report, manifest_raw = localanchore_standalone.analyze_image(userId, registry_manifest, image_record, tmpdir, localconfig, registry_creds=registry_creds, use_cache_dir=use_cache_dir, parent_manifest=registry_parent_manifest)
+        analyzed_image_report, manifest_raw = localanchore_standalone.analyze_image(account, registry_manifest, image_record, tmpdir, localconfig, registry_creds=registry_creds, use_cache_dir=use_cache_dir, parent_manifest=registry_parent_manifest)
         ret_analyze = analyzed_image_report
 
     logger.info("performing analysis on image complete: " + str(pullstring))
@@ -118,7 +117,7 @@ def process_analyzer_job(request: AnalysisQueueMessage, layer_cache_enable):
             except Exception as err:
                 logger.warn("could not get imageId after analysis or from image record - exception: " + str(err))
 
-            logger.info("adding image analysis data to catalog: userid={} imageId={} imageDigest={}".format(account, imageId, image_digest))
+            logger.info("adding image analysis data to catalog: account={} imageId={} imageDigest={}".format(account, imageId, image_digest))
             try:
                 logger.debug("archiving analysis data")
                 rc = catalog_client.put_document('analysis_data', image_digest, image_data)
@@ -152,7 +151,7 @@ def process_analyzer_job(request: AnalysisQueueMessage, layer_cache_enable):
                     traceback.print_exc()
                     logger.warn("could not store image content metadata to archive - exception: " + str(err))
 
-                logger.info("adding image to policy engine: userid={} imageId={} imageDigest={}".format(account, imageId, image_digest))
+                logger.info("adding image to policy engine: account={} imageId={} imageDigest={}".format(account, imageId, image_digest))
                 try:
                     if not imageId:
                         raise Exception("cannot add image to policy engine without an imageId")
