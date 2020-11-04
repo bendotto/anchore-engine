@@ -1058,8 +1058,6 @@ def run_anchore_analyzers(staging_dirs, imageDigest, imageId, localconfig):
 
 
 def generate_image_export(
-    staging_dirs,
-    imageDigest,
     imageId,
     analyzer_report,
     imageSize,
@@ -1253,32 +1251,40 @@ def analyze_image(
         familytree = layers
 
         timer = time.time()
-        analyzer_report = run_anchore_analyzers(
-            staging_dirs, imageDigest, imageId, localconfig
-        )
+        try:
+            analyzer_report = run_anchore_analyzers(
+                staging_dirs, imageDigest, imageId, localconfig
+            )
+        except Exception as err:
+            raise AnalyzerError(cause=err, pull_string=pullstring, tag=fulltag)
         logger.debug(
             "timing: total analyzer time: {} - {}".format(
                 pullstring, time.time() - timer
             )
         )
 
-        image_report = generate_image_export(
-            staging_dirs,
-            imageDigest,
-            imageId,
-            analyzer_report,
-            imageSize,
-            fulltag,
-            docker_history,
-            dockerfile_mode,
-            dockerfile_contents,
-            layers,
-            familytree,
-            imageArch,
-            pullstring,
-            analyzer_manifest,
-        )
+        try:
+            image_report = generate_image_export(
+                imageId,
+                analyzer_report,
+                imageSize,
+                fulltag,
+                docker_history,
+                dockerfile_mode,
+                dockerfile_contents,
+                layers,
+                familytree,
+                imageArch,
+                pullstring,
+                analyzer_manifest,
+            )
+        except Exception as err:
+            raise AnalysisReportGenerationError(
+                cause=err, pull_string=pullstring, tag=fulltag
+            )
 
+    except AnchoreException:
+        raise
     except Exception as err:
         raise AnalysisError(
             cause=err,
