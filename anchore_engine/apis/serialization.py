@@ -2,15 +2,7 @@
 Tools for using marshmallow/toastedmarshmallow for json->obj->json marshalling stuff.
 """
 
-from marshmallow import Schema, fields, post_load
-
-
-class JsonSerializationException(Exception):
-    pass
-
-
-class JsonDeserializationException(Exception):
-    pass
+from marshmallow import Schema, fields, post_load, ValidationError
 
 
 class JsonSerializable:
@@ -48,30 +40,14 @@ class JsonSerializable:
 
     """
 
-    __schema__ = None
+    __schema__: Schema = None
 
     @classmethod
     def from_json(cls, data):
-        result = cls.__schema__.load(data)
-        if not result.errors and result.data:
-            return result.data
-        else:
-            raise JsonDeserializationException(
-                "deserialization from json failed with errors: {}".format(result.errors)
-            )
+        return cls.__schema__.load(data)
 
     def to_json(self):
-        result = self.__schema__.dump(self)
-        if result.errors:
-            raise JsonSerializationException(
-                "serialization to json failed with errors: {}".format(result.errors)
-            )
-        return result.data
+        return self.__schema__.dump(self)
 
     def to_json_str(self):
-        result = self.__schema__.dumps(self)
-        if result.errors:
-            raise JsonSerializationException(
-                "serialization to json failed with errors: {}".format(result.errors)
-            )
-        return result.data
+        return self.__schema__.dumps(self)

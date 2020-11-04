@@ -120,7 +120,7 @@ class ObjectStoreLocation(JsonSerializable):
         key = fields.Str()
 
         @post_load
-        def make(self, data):
+        def make(self, data, **kwargs):
             return ObjectStoreLocation(**data)
 
     __schema__ = ObjectStoreLocationV1Schema()
@@ -135,7 +135,7 @@ class TarballLocation(JsonSerializable):
         tarfile_path = fields.Str()
 
         @post_load
-        def make(self, data):
+        def make(self, data, **kwargs):
             return TarballLocation(**data)
 
     __schema__ = TarballLocationV1Schema()
@@ -155,7 +155,7 @@ class Artifact(JsonSerializable):
         dest = fields.Nested(TarballLocation.TarballLocationV1Schema, allow_none=True)
 
         @post_load
-        def make(self, data):
+        def make(self, data, **kwargs):
             return Artifact(**data)
 
     __schema__ = ArtifactV1Schema()
@@ -176,7 +176,7 @@ class ArchiveManifest(JsonSerializable):
         artifacts = fields.List(fields.Nested(Artifact.ArtifactV1Schema))
 
         @post_load
-        def make_manifest(self, data):
+        def make_manifest(self, data, **kwargs):
             return ArchiveManifest(**data)
 
     __schema__ = ArchiveManifestV1Schema()
