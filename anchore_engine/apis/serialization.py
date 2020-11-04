@@ -18,14 +18,14 @@ class JsonSerializable:
         obj.to_json() # Gives a dict
         obj.to_json_str() # Gives a string serialized json output
 
-        class ObjectStoreLocation(JsonMappedMixin):
-          class ObjectStoreLocationV1Schema(JitSchema):
+        class ObjectStoreLocation(JsonSerializable):
+          class ObjectStoreLocationV1Schema(Schema):
             bucket = fields.Str()
             key = fields.Str()
 
             # This tells the system to return the actual object type rather than a serialization result
             @post_load
-            def make(self, data):
+            def make(self, data, **kwargs):
               return ObjectStoreLocation(**data)
 
 
