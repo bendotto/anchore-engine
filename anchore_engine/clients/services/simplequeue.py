@@ -2,8 +2,6 @@ import json
 import threading
 import time
 
-from anchore_engine.apis.serialization import JsonSerializable, Schema, post_load
-from marshmallow import fields
 from anchore_engine.clients.services import http
 from anchore_engine.subsys import logger
 from anchore_engine.utils import get_threadbased_id

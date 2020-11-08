@@ -16,7 +16,7 @@ from anchore_engine.services.policy_engine.engine.feeds.download import (
     LocalFeedDataRepo,
     FeedDownloader,
 )
-from anchore_engine.services.policy_engine.engine.feeds.schemas import (
+from anchore_engine.common.schemas import (
     LocalFeedDataRepoMetadata,
     DownloadOperationResult,
 )
