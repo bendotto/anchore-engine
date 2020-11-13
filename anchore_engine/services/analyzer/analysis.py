@@ -1,5 +1,4 @@
 import json
-import operator
 import os
 import time
 
@@ -12,11 +11,81 @@ from anchore_engine.clients.services import internal_client_for
 from anchore_engine.clients.services.catalog import CatalogClient
 from anchore_engine.clients.services.policy_engine import PolicyEngineClient
 from anchore_engine.subsys import logger, events as events, metrics, taskstate
-from anchore_engine.utils import AnchoreException
 from anchore_engine.common.schemas import AnalysisQueueMessage, ValidationError
+from anchore_engine.utils import AnchoreException
+from anchore_engine.services.analyzer.errors import PolicyEngineClientError, CatalogClientError
+from anchore_engine.services.analyzer.tasks import WorkerTask
+import typing
+
+ANALYSIS_TIME_SECONDS_BUCKETS = [1.0, 5.0, 10.0, 30.0, 60.0, 120.0, 300.0, 600.0, 1800.0, 3600.0]
+
+
+def fulltag_from_detail(image_detail: dict) -> str:
+    """
+    Return a fulltag string from the detail record
+
+    :param image_detail:
+    :return:
+    """
+    return image_detail['registry'] + "/" + image_detail['repo'] + ":" + image_detail['tag']
+
+
+def analysis_complete_notification_factory(account, image_digest: str, last_analysis_status: str, analysis_status: str, image_detail: dict, annotations: dict) -> events.UserAnalyzeImageCompleted:
+    """
+    Return a constructed UserAnalysImageCompleted event from the input data
+
+    :param account:
+    :param image_digest:
+    :param last_analysis_status:
+    :param analysis_status:
+    :param image_detail:
+    :param annotations:
+    :return:
+    """
+
+    payload = {
+        'last_eval': {'imageDigest': image_digest, 'analysis_status': last_analysis_status, 'annotations': annotations},
+        'curr_eval': {'imageDigest': image_digest, 'analysis_status': analysis_status, 'annotations': annotations},
+        'subscription_type': 'analysis_update',
+        'annotations': annotations or {}
+    }
+
+    fulltag = fulltag_from_detail(image_detail)
+
+    return events.UserAnalyzeImageCompleted(user_id=account, full_tag=fulltag, data=payload)
+
+
+def notify_analysis_complete(image_record: dict, last_analysis_status) -> typing.List[events.UserAnalyzeImageCompleted]:
+    """
+
+    :param image_record:
+    :return: list of UserAnalyzeImageCompleted events, one for each tag in the image record
+    """
+
+    events = []
+    image_digest = image_record['imageDigest']
+    account = image_record['userId']
+
+    annotations = {}
+    try:
+        if image_record.get('annotations', '{}'):
+            annotations = json.loads(image_record.get('annotations', '{}'))
+    except Exception as err:
+        logger.warn("could not marshal annotations from json - exception: " + str(err))
+
+    for image_detail in image_record['image_detail']:
+        event = analysis_complete_notification_factory(account, image_digest, last_analysis_status, image_record['analysis_status'], image_detail, annotations)
+        events.append(event)
+
+    return events
 
 
 def is_analysis_message(payload_json: dict) -> bool:
+    """
+    Is the given payload an analysis message payload or some other kind
+    :param payload_json:
+    :return:
+    """
     try:
         return AnalysisQueueMessage.from_json(payload_json) is not None
     except ValidationError:
@@ -33,7 +102,7 @@ def perform_analyze(account, manifest, image_record, registry_creds, layer_cache
         logger.warn("could not get tmp_dir from localconfig - exception: " + str(err))
         tmpdir = "/tmp"
 
-    use_cache_dir=None
+    use_cache_dir = None
     if layer_cache_enable:
         use_cache_dir = os.path.join(tmpdir, "anchore_layercache")
 
@@ -44,7 +113,7 @@ def perform_analyze(account, manifest, image_record, registry_creds, layer_cache
         registry_parent_manifest = parent_manifest
         pullstring = image_detail['registry'] + "/" + image_detail['repo'] + "@" + image_detail['imageDigest']
         fulltag = image_detail['registry'] + "/" + image_detail['repo'] + ":" + image_detail['tag']
-        logger.debug("using pullstring ("+str(pullstring)+") and fulltag ("+str(fulltag)+") to pull image data")
+        logger.debug("using pullstring (" + str(pullstring) + ") and fulltag (" + str(fulltag) + ") to pull image data")
     except Exception as err:
         image_detail = pullstring = fulltag = None
         raise Exception("failed to extract requisite information from image_record - exception: " + str(err))
@@ -65,6 +134,13 @@ def perform_analyze(account, manifest, image_record, registry_creds, layer_cache
 
 
 def process_analyzer_job(request: AnalysisQueueMessage, layer_cache_enable):
+    """
+    Core logic of the analysis process
+
+    :param request:
+    :param layer_cache_enable:
+    :return:
+    """
     global servicename
 
     timer = int(time.time())
@@ -156,7 +232,7 @@ def process_analyzer_job(request: AnalysisQueueMessage, layer_cache_enable):
                     if not imageId:
                         raise Exception("cannot add image to policy engine without an imageId")
 
-                    #localconfig = anchore_engine.configuration.localconfig.get_config()
+                    # localconfig = anchore_engine.configuration.localconfig.get_config()
                     verify = localconfig['internal_ssl_verify']
 
                     pe_client = internal_client_for(PolicyEngineClient, account)
@@ -172,7 +248,7 @@ def process_analyzer_job(request: AnalysisQueueMessage, layer_cache_enable):
                     for retry_wait in [1, 3, 5, 0]:
                         try:
                             logger.debug('loading image into policy engine: {} / {} / {}'.format(account, imageId, image_digest))
-                            image_analysis_fetch_url='catalog://'+str(account)+'/analysis_data/'+str(image_digest)
+                            image_analysis_fetch_url = 'catalog://' + str(account) + '/analysis_data/' + str(image_digest)
                             logger.debug("policy engine request: " + image_analysis_fetch_url)
                             resp = pe_client.ingress_image(account, imageId, image_analysis_fetch_url)
                             logger.debug("policy engine image add response: " + str(resp))
@@ -199,28 +275,7 @@ def process_analyzer_job(request: AnalysisQueueMessage, layer_cache_enable):
                 rc = catalog_client.update_image(image_digest, image_record)
 
                 try:
-                    annotations = {}
-                    try:
-                        if image_record.get('annotations', '{}'):
-                            annotations = json.loads(image_record.get('annotations', '{}'))
-                    except Exception as err:
-                        logger.warn("could not marshal annotations from json - exception: " + str(err))
-
-                    for image_detail in image_record['image_detail']:
-                        fulltag = image_detail['registry'] + "/" + image_detail['repo'] + ":" + image_detail['tag']
-                        last_payload = {'imageDigest': image_digest, 'analysis_status': last_analysis_status, 'annotations': annotations}
-                        curr_payload = {'imageDigest': image_digest, 'analysis_status': image_record['analysis_status'], 'annotations': annotations}
-                        npayload = {
-                            'last_eval': last_payload,
-                            'curr_eval': curr_payload,
-                            'subscription_type': 'analysis_update'
-                        }
-                        if annotations:
-                            npayload['annotations'] = annotations
-
-                        event = events.UserAnalyzeImageCompleted(user_id=account, full_tag=fulltag, data=npayload)
-                        analysis_events.append(event)
-
+                    notify_analysis_complete(image_record, last_analysis_status)
                 except Exception as err:
                     logger.warn("failed to enqueue notification on image analysis state update - exception: " + str(err))
 
@@ -238,7 +293,7 @@ def process_analyzer_job(request: AnalysisQueueMessage, layer_cache_enable):
                 anchore_engine.subsys.metrics.counter_inc(name='anchore_analysis_success')
                 run_time = float(time.time() - timer)
 
-                anchore_engine.subsys.metrics.histogram_observe('anchore_analysis_time_seconds', run_time, buckets=[1.0, 5.0, 10.0, 30.0, 60.0, 120.0, 300.0, 600.0, 1800.0, 3600.0], status="success")
+                anchore_engine.subsys.metrics.histogram_observe('anchore_analysis_time_seconds', run_time, buckets=ANALYSIS_TIME_SECONDS_BUCKETS, status="success")
 
             except Exception as err:
                 logger.warn(str(err))
@@ -248,7 +303,7 @@ def process_analyzer_job(request: AnalysisQueueMessage, layer_cache_enable):
             anchore_engine.subsys.metrics.counter_inc(name='anchore_analysis_error')
             run_time = float(time.time() - timer)
             logger.exception("problem analyzing image - exception: " + str(err))
-            anchore_engine.subsys.metrics.histogram_observe('anchore_analysis_time_seconds', run_time, buckets=[1.0, 5.0, 10.0, 30.0, 60.0, 120.0, 300.0, 600.0, 1800.0, 3600.0], status="fail")
+            anchore_engine.subsys.metrics.histogram_observe('anchore_analysis_time_seconds', run_time, buckets=ANALYSIS_TIME_SECONDS_BUCKETS, status="fail")
             image_record['analysis_status'] = anchore_engine.subsys.taskstate.fault_state('analyze')
             image_record['image_status'] = anchore_engine.subsys.taskstate.fault_state('image_status')
             rc = catalog_client.update_image(image_digest, image_record)
@@ -273,71 +328,15 @@ def process_analyzer_job(request: AnalysisQueueMessage, layer_cache_enable):
     return True
 
 
-class CatalogClientError(AnchoreException):
-    def __init__(self, cause, msg='Failed to execute out catalog API'):
-        self.cause = str(cause)
-        self.msg = msg
+class ImageAnalysisTask(WorkerTask):
+    """
+    The actual analysis task
+    """
 
-    def __repr__(self):
-        return '{} - exception: {}'.format(self.msg, self.cause)
+    def __init__(self, message: AnalysisQueueMessage, layer_cache_enabled: bool = False):
+        super().__init__()
+        self.layer_cache_enabled = layer_cache_enabled
+        self.message = message
 
-    def __str__(self):
-        return '{} - exception: {}'.format(self.msg, self.cause)
-
-
-class PolicyEngineClientError(AnchoreException):
-    def __init__(self, cause, msg='Failed to execute out policy engine API'):
-        self.cause = str(cause)
-        self.msg = msg
-
-    def __repr__(self):
-        return '{} - exception: {}'.format(self.msg, self.cause)
-
-    def __str__(self):
-        return '{} - exception: {}'.format(self.msg, self.cause)
-
-
-def handle_layer_cache(**kwargs):
-    try:
-        localconfig = get_config()
-        myconfig = localconfig['services']['analyzer']
-
-        cachemax_gbs = int(myconfig.get('layer_cache_max_gigabytes', 1))
-        cachemax = cachemax_gbs * 1000000000
-
-        try:
-            tmpdir = localconfig['tmp_dir']
-        except Exception as err:
-            logger.warn("could not get tmp_dir from localconfig - exception: " + str(err))
-            tmpdir = "/tmp"
-        use_cache_dir = os.path.join(tmpdir, "anchore_layercache")
-        if os.path.exists(use_cache_dir):
-            totalsize = 0
-            layertimes = {}
-            layersizes = {}
-            try:
-                for f in os.listdir(os.path.join(use_cache_dir, 'sha256')):
-                    layerfile = os.path.join(use_cache_dir, 'sha256', f)
-                    layerstat = os.stat(layerfile)
-                    totalsize = totalsize + layerstat.st_size
-                    layersizes[layerfile] = layerstat.st_size
-                    layertimes[layerfile] = max([layerstat.st_mtime, layerstat.st_ctime, layerstat.st_atime])
-
-                if totalsize > cachemax:
-                    logger.debug("layer cache total size ("+str(totalsize)+") exceeds configured cache max ("+str(cachemax)+") - performing cleanup")
-                    currsize = totalsize
-                    sorted_layers = sorted(list(layertimes.items()), key=operator.itemgetter(1))
-                    while currsize > cachemax:
-                        rmlayer = sorted_layers.pop(0)
-                        logger.debug("removing cached layer: " + str(rmlayer))
-                        os.remove(rmlayer[0])
-                        currsize = currsize - layersizes[rmlayer[0]]
-                        logger.debug("currsize after remove: " + str(currsize))
-
-            except Exception as err:
-                raise err
-
-    except Exception as err:
-        raise err
-
-    return True
+    def execute(self):
+        return process_analyzer_job(self.message, self.layer_cache_enabled)

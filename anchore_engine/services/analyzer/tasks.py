@@ -4,11 +4,9 @@ Async tasks that the worker component uses
 import datetime
 import enum
 from uuid import uuid4
-import json
-from anchore_engine.subsys import logger
-from anchore_engine.subsys import metrics
 from abc import ABC
 from abc import abstractmethod
+import threading
 
 
 class Status(enum.Enum):
@@ -19,8 +17,9 @@ class Status(enum.Enum):
     complete = 'complete'
 
 
-class WorkerTask(ABC):
+class WorkerTask(threading.Thread):
     def __init__(self):
+        super().__init__()
         self.task_id = uuid4().hex
         self.created_at = datetime.datetime.utcnow()
         self.started_at = None
@@ -43,18 +42,23 @@ class WorkerTask(ABC):
         self._start()
 
     @abstractmethod
-    def exec(self):
+    def execute(self):
         pass
 
-    def _post_exec(self):
-        pass
+    def _post_exec(self, exception: Exception = None):
+        if exception is None:
+            self._success()
+        else:
+            self._failed()
 
     def run(self):
         self._pre_exec()
         try:
-            self.exec()
-        finally:
+            self.execute()
             self._post_exec()
+        except Exception as ex:
+            self._post_exec(ex)
+
 
 
 

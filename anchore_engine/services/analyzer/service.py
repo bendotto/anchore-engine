@@ -5,13 +5,16 @@ import time
 
 import pkg_resources
 
-from anchore_engine.common.schemas import QueueMessage, AnalysisQueueMessage
+from anchore_engine.common.schemas import QueueMessage, AnalysisQueueMessage, ImportQueueMessage
 from anchore_engine.configuration import localconfig
 import anchore_engine.subsys
 from anchore_engine.clients.services import internal_client_for
 from anchore_engine.clients.services.simplequeue import SimpleQueueClient
 from anchore_engine.service import ApiService
-from anchore_engine.services.analyzer.analysis import process_analyzer_job, handle_layer_cache, is_analysis_message
+from anchore_engine.services.analyzer.analysis import process_analyzer_job, is_analysis_message, ImageAnalysisTask
+from anchore_engine.services.analyzer.layer_cache import handle_layer_cache
+from anchore_engine.services.analyzer.tasks import WorkerTask
+from anchore_engine.services.analyzer.imports import process_import_job, is_import_message, ImportTask
 from anchore_engine.subsys import logger, metrics
 
 IMAGE_ANALYSIS_QUEUE = "images_to_analyze"
@@ -50,6 +53,17 @@ def handle_metrics(*args, **kwargs):
     return True
 
 
+def build_task(message: QueueMessage, config: dict) -> WorkerTask:
+    if is_analysis_message(message.data):
+        logger.info("Starting image analysis thread")
+        return ImageAnalysisTask(AnalysisQueueMessage.from_json(message.data), layer_cache_enabled=config.get('layer_cache_enable', False))
+    elif is_import_message(message.data):
+        logger.info("Starting image import thread")
+        return ImportTask(ImportQueueMessage.from_json(message.data))
+    else:
+        raise UnexpectedTaskTypeError(message)
+
+
 def handle_image_analyzer(*args, **kwargs):
     """
     Processor for image analysis requests coming from the work queue
@@ -62,39 +76,33 @@ def handle_image_analyzer(*args, **kwargs):
     cycle_timer = kwargs['mythread']['cycle_timer']
 
     localconfig = anchore_engine.configuration.localconfig.get_config()
+    myconfig = localconfig['services']['analyzer']
+    max_analyze_threads = int(myconfig.get('max_threads', 1))
+    layer_cache_enable = myconfig.get('layer_cache_enable', False)
+    logger.debug("max analysis threads: " + str(max_analyze_threads))
 
     threads = []
     layer_cache_dirty = True
+
     while True:
         logger.debug("analyzer thread cycle start")
         try:
-            myconfig = localconfig['services']['analyzer']
-            max_analyze_threads = int(myconfig.get('max_threads', 1))
-            layer_cache_enable = myconfig.get('layer_cache_enable', False)
-
-            logger.debug("max threads: " + str(max_analyze_threads))
             q_client = internal_client_for(SimpleQueueClient, userId=None)
 
             if len(threads) < max_analyze_threads:
                 logger.debug("analyzer has free worker threads {} / {}".format(len(threads), max_analyze_threads))
                 qobj = q_client.dequeue(IMAGE_ANALYSIS_QUEUE)
                 if qobj:
-                    logger.debug("got work from queue task Id: {}".format(qobj.get('queueId', 'unknown')))
                     myqobj = copy.deepcopy(qobj)
+                    logger.debug("got work from queue task Id: {}".format(qobj.get('queueId', 'unknown')))
                     logger.debug("incoming queue object: " + str(myqobj))  # Was "spew" level
+
                     message = QueueMessage.from_json(qobj)
-                    logger.debug("incoming queue task: {}".format(message.data))
-
-                    if is_analysis_message(message.data):
-                         request = AnalysisQueueMessage.from_json(message.data)
-                    else:
-                        raise UnexpectedTaskTypeError(message)
-
-                    logger.info("Starting image analysis thread")
-                    athread = threading.Thread(target=process_analyzer_job, args=(request, layer_cache_enable))
-                    athread.start()
-                    threads.append(athread)
+                    task = build_task(message, myconfig)
+                    task.start()
+                    threads.append(task)
                     logger.debug("thread started")
+
                     layer_cache_dirty = True
                 else:
                     logger.debug("analyzer queue is empty - no work this cycle")

@@ -4,7 +4,11 @@ can import cleanly into any service or module.
 """
 import datetime
 
-from marshmallow import Schema, ValidationError, post_load, fields
+import marshmallow
+from marshmallow import Schema, post_load, fields
+
+# For other modules to import from this one instead of having to know/use marshmallow directly
+ValidationError = marshmallow.ValidationError
 
 
 # TODO: This is not enforced in the interface yet, but should be the input and return type for queue operations in this API
@@ -154,7 +158,7 @@ class AnalysisQueueMessage(JsonSerializable):
         def make(self, data, **kwargs):
             return AnalysisQueueMessage(**data)
 
-    __schema__ = AnalysisQueueMessageV1Schema(unknown='EXCLUDE')
+    __schema__ = AnalysisQueueMessageV1Schema()
 
     def __init__(self, account=None, image_digest=None, manifest=None, parent_manifest=None):
         self.account = account
@@ -207,11 +211,10 @@ class ImageMetadata(JsonSerializable):
     """
     class ImageMetadataV1Schema(Schema):
         digest = fields.String(required=True)
-        local_image_id = fields.String()
-        layers = fields.List(fields.Nested(ImageLayerMetadata.ImageLayerMetadataV1Schema))
-        size = fields.Int()
-        platform = fields.Nested(ImagePlatform.ImagePlatformV1Schema)
-        annotations = fields.Mapping(keys=fields.String(), values=fields.String())
+        local_image_id = fields.String(allow_none=True)
+        layers = fields.List(fields.Nested(ImageLayerMetadata.ImageLayerMetadataV1Schema), allow_none=True)
+        size = fields.Int(allow_none=True)
+        platform = fields.Nested(ImagePlatform.ImagePlatformV1Schema, allow_none=True)
 
         @post_load
         def make(self, data, **kwargs):
@@ -219,20 +222,21 @@ class ImageMetadata(JsonSerializable):
 
     __schema__ = ImageMetadataV1Schema()
 
-    def __init__(self, digest=None, local_image_id=None, layers=None, size=None, platform=None, annotations=None):
+    def __init__(self, digest=None, local_image_id=None, layers=None, size=None, platform=None):
         self.digest = digest
         self.local_image_id = local_image_id
         self.layers = layers
         self.size = size
         self.platform = platform
-        self.annotations = annotations
 
 
 class ImportManifest(JsonSerializable):
     class ImportManifestV1Schema(Schema):
         metadata = fields.Nested(ImageMetadata.ImageMetadataV1Schema)
-        tags = fields.List(fields.String())
-        docker_file = fields.String(allow_none=True)
+        tags = fields.List(fields.String(), allow_none=True)
+        annotations = fields.Mapping(keys=fields.String(), values=fields.String(), allow_none=True)
+        contents = fields.List(fields.String()) # The list of content digests
+        # Add type field w/digest
 
         @post_load
         def make(self, data, **kwargs):
@@ -240,10 +244,11 @@ class ImportManifest(JsonSerializable):
 
     __schema__ = ImportManifestV1Schema()
 
-    def __init__(self, metadata=None, tags=None, docker_file=None):
+    def __init__(self, metadata=None, tags=None, annotations=None, contents=None):
         self.metadata = metadata
         self.tags = tags
-        self.docker_file = docker_file
+        self.annotations = annotations
+        self.contents = contents
 
 
 class ImportQueueMessage(JsonSerializable):
@@ -253,22 +258,25 @@ class ImportQueueMessage(JsonSerializable):
         {
             'manifest': {
             <ImportManifest>
-            }
+            },
+            'operation_uuid': <uuid>,
             'account': 'admin'},
         }
 
         """
         account = fields.String(data_key='userId')
-        manifest = fields.Nested(ImportManifest)
+        operation_uuid = fields.UUID()
+        manifest = fields.Nested(ImportManifest.ImportManifestV1Schema)
 
         @post_load
         def make(self, data, **kwargs):
             return ImportQueueMessage(**data)
 
-    __schema__ = ImportQueueMessageV1Schema(unknown='EXCLUDE')
+    __schema__ = ImportQueueMessageV1Schema()
 
-    def __init__(self, account=None, manifest=None):
+    def __init__(self, account=None, operation_uuid=None, manifest=None):
         self.account = account
+        self.operation_uuid = operation_uuid
         self.manifest = manifest
 
 
