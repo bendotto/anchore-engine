@@ -1574,6 +1574,150 @@ paths:
           schema:
             # TODO: replace with proper model
             type: object
+  /imports/images:
+    post:
+      x-swagger-router-controller: anchore_engine.services.catalog.api.controllers.imports
+      operationId: create_operation
+      x-anchore-authz-action: importImage
+      summary: "Begin the import of an image analyzed by Syft into the system"
+      produces:
+        - "application/json"
+      responses:
+        200:
+          description: "success"
+          schema:
+            $ref: "#/definitions/ImageImportOperation"
+        500:
+          description: "Internal Error"
+    get:
+      x-swagger-router-controller: anchore_engine.services.catalog.api.controllers.imports
+      operationId: list_operations
+      x-anchore-authz-action: importImage
+      summary: "Lists in-progress imports"
+      produces:
+        - "application/json"
+      responses:
+        200:
+          description: "success"
+          schema:
+            $ref: "#/definitions/ImageImports"
+        500:
+          description: "Internal Error"
+  /imports/images/{operation_id}:
+    get:
+      x-swagger-router-controller: anchore_engine.services.catalog.api.controllers.imports
+      operationId: get_operation
+      x-anchore-authz-action: importImage
+      summary: "Get detail on a single import"
+      produces:
+        - "application/json"
+      parameters:
+        - name: operation_id
+          in: path
+          type: string
+          required: true
+      responses:
+        200:
+          description: "success"
+          schema:
+            $ref: "#/definitions/ImageImports"
+        500:
+          description: "Internal Error"
+#  /imports/images/{operation_id}/content:
+#    get:
+#      x-swagger-router-controller: anchore_engine.services.catalog.api.controllers.imports
+#      operationId: list_content_types
+#      x-anchore-authz-action: importImage
+#      summary: "Begin the import of an image analyzed by Syft into the system"
+#      description: "Starts the import process"
+#      produces:
+#        - "application/json"
+#      parameters:
+#        - name: operation_id
+#          in: path
+#          type: string
+#          required: true
+#      responses:
+#        200:
+#          description: "success"
+#          schema:
+#            $ref: "#/definitions/ImageImportContentTypesResponse"
+#        500:
+#          description: "Internal Error"
+  /imports/images/{operation_id}/packages:
+    get:
+      x-swagger-router-controller: anchore_engine.services.catalog.api.controllers.imports
+      operationId: list_import_packages
+      x-anchore-authz-action: importImage
+      summary: "Begin the import of an image analyzed by Syft into the system"
+      description: "Starts the import process"
+      produces:
+        - "application/json"
+      parameters:
+        - name: operation_id
+          in: path
+          type: string
+          required: true
+      responses:
+        200:
+          description: "success"
+          schema:
+            $ref: "#/definitions/PackageDigestList"
+        500:
+          description: "Internal Error"
+    post:
+      x-swagger-router-controller: anchore_engine.services.catalog.api.controllers.imports
+      operationId: import_image_packages
+      x-anchore-authz-action: importImage
+      summary: "Begin the import of an image analyzed by Syft into the system"
+      description: "Starts the import process"
+      produces:
+        - "application/json"
+      consumes:
+        - "application/json"
+      parameters:
+        - name: operation_id
+          in: path
+          type: string
+          required: true
+        - name: sbom
+          in: body
+          required: true
+          schema:
+            $ref: "#/definitions/ImagePackageManifest"
+      responses:
+        200:
+          description: "success"
+          schema:
+            $ref: "#/definitions/ImageImportContentResponse"
+        500:
+          description: "Internal Error"
+  /imports/images/{operation_id}/finalize:
+    post:
+      x-swagger-router-controller: anchore_engine.services.catalog.api.controllers.imports
+      operationId: finalize_import
+      x-anchore-authz-action: importImage
+      summary: "Finalize the import, indicating all data is present and the system can load the image"
+      description: "Ends the import process upload phase and begins the import async process to load the image"
+      produces:
+        - "application/json"
+      parameters:
+        - name: operation_id
+          in: path
+          type: string
+          required: true
+        - name: manifest
+          in: body
+          schema:
+            $ref: "#/definitions/ImageImportManifest"
+          required: true
+      responses:
+        200:
+          description: "success"
+          schema:
+            $ref: "#/definitions/FinalizeImageImportResponse"
+        500:
+          description: "Internal Error"
 definitions:
   ImageAddMetadata:
     description: Additional data to add to an image record when an image is ingressed, such as dockerfile and annotations
@@ -1854,3 +1998,112 @@ definitions:
           schema_version:
             type: string
             description: Semantic version of the db schema
+  ImageImportOperation:
+    type: object
+    description: An import record, creating a unique identifier for referencing the operation as well as its state
+    properties:
+      uuid:
+        type: string
+      status:
+        type: string
+        enum:
+          - pending
+          - queued
+          - processing
+          - complete
+          - failed
+          - expired
+      expires_at:
+        type: string
+        format: date-time
+      created_at:
+        type: string
+        format: date-time
+  ImageImportContentResponse:
+    type: object
+    properties:
+      digest:
+        type: string
+      created_at:
+        type: string
+        format: date-time
+  ImageContentDeleteResponse:
+    type: object
+  ImageImportManifest:
+    type: object
+    properties:
+      annotations:
+        $ref: "#/definitions/Annotations"
+      contents:
+        $ref: "#/definitions/ImportContentList"
+      tags:
+        type: array
+        items:
+          type: string
+          description: Full docker reference tags
+          example: "docker.io/library/nginx:latest"
+      metadata:
+        $ref: "#/definitions/ImageImportManifestMetadata"
+  ImageImportManifestMetadata:
+    type: object
+    properties:
+      digest:
+        type: string
+      local_image_id:
+        type: string
+      layers:
+        type: array
+        items:
+          $ref: "#/definitions/ImageImportLayerMetadata"
+      platform:
+        $ref: "#/definitions/ImageImportPlatform"
+  ImageImportPlatform:
+    type: object
+    description: An image platform is a combination of an OS and an architecture
+    properties:
+      os:
+        type: string
+        example: linux
+      architecture:
+        type: string
+        example: amd64
+  ImageImportLayerMetadata:
+    type: object
+    properties:
+      digest:
+        type: string
+      size:
+        type: integer
+      location:
+        type: string
+  ImportContentList:
+    type: array
+    items:
+      type: string
+      description: Digest of content to use in the final import
+#  AnnotationArray:
+#    type: array
+#    items:
+#      $ref: "#/definitions/Annotation"
+  Annotations:
+    type: object
+    description: Simple key/value pairs where the value may be optional
+  FinalizeImageImportResponse:
+    type: object
+    properties:
+      uuid:
+        type: string
+      status:
+        type: string
+  ImageImports:
+    type: array
+    items:
+      $ref: "#/definitions/ImageImportOperation"
+  ImagePackageManifest:
+    type: object
+    # TODO: Insert Syft schema v1 here in PackageManifest
+  PackageDigestList:
+    type: array
+    items:
+      type: string
+      description: String digest of an uploaded content

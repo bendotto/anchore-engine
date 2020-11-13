@@ -141,7 +141,6 @@ def process_analyzer_job(request: AnalysisQueueMessage, layer_cache_enable):
     :param layer_cache_enable:
     :return:
     """
-    global servicename
 
     timer = int(time.time())
     analysis_events = []
@@ -149,8 +148,6 @@ def process_analyzer_job(request: AnalysisQueueMessage, layer_cache_enable):
     localconfig = get_config()
 
     try:
-        logger.debug('dequeued object: {}'.format(request.to_json()))
-
         account = request.account
         image_digest = request.image_digest
         manifest = request.manifest

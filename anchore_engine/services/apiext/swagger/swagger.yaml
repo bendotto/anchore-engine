@@ -2911,6 +2911,11 @@ definitions:
         type: string
         description: The image digest identify the analysis. Archived analyses are based on digest, tag records are restored as analysis is restored.
         pattern: "^sha256:[a-fA-F0-9]{64}$"
+  LocalAnalysisSource:
+    type: object
+    properties:
+      digest:
+        type: string
   PolicyBundle:
     description: A bundle containing a set of policies, whitelists, and rules for mapping them to specific images
     type: object

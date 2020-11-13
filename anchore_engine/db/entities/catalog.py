@@ -16,6 +16,7 @@ from sqlalchemy import (
     JSON,
     Enum,
 )
+import uuid
 from sqlalchemy import inspect
 from sqlalchemy.orm import relationship
 
@@ -731,3 +732,49 @@ class Lease(Base, UtilMixin):
             self.expires_at.isoformat() if self.expires_at else self.expires_at,
             self.epoch,
         )
+
+
+# Image import entities
+class ImportState(enum.Enum):
+    pending = "pending"
+    queued = "queued"
+    processing = "processing"
+    complete = "complete"
+    failed = "failed"
+    expired = "expired"
+
+
+class ImageImportOperation(Base, UtilMixin):
+    __tablename__ = "image_imports"
+
+    uuid = Column(String, primary_key=True, default=uuid.uuid4)
+    account = Column(String, index=True)
+    expires_at = Column(DateTime)
+    status = Column(Enum(ImportState))
+    created_at = Column(DateTime, default=anchore_now_datetime)
+    last_updated = Column(
+        DateTime, default=anchore_now_datetime, onupdate=anchore_now_datetime
+    )
+    contents = relationship("ImageImportContent", back_populates="operation")
+
+    def to_json(self):
+        j = super().to_json()
+        j["status"] = self.status.value
+        return j
+
+
+class ImageImportContent(Base, UtilMixin):
+    """
+    References to objects in the object store used for
+    """
+
+    __tablename__ = "image_import_content"
+
+    operation_id = Column(String, ForeignKey("image_imports.uuid"), primary_key=True)
+    digest = Column(String, primary_key=True)
+    content_type = Column(String)
+    created_at = Column(DateTime, default=anchore_now_datetime)
+    last_updated = Column(
+        DateTime, default=anchore_now_datetime, onupdate=anchore_now_datetime
+    )
+    operation = relationship("ImageImportOperation", back_populates="contents")
