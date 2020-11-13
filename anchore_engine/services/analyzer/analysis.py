@@ -340,3 +340,4 @@ class ImageAnalysisTask(WorkerTask):
 
     def execute(self):
         return process_analyzer_job(self.message, self.layer_cache_enabled)
+

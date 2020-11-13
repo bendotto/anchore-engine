@@ -103,7 +103,10 @@ def handle_image_analyzer(*args, **kwargs):
                     threads.append(task)
                     logger.debug("thread started")
 
-                    layer_cache_dirty = True
+                    # Only analysis tasks can dirty the cache, import or other tasks don't use it
+                    if type(task) == ImageAnalysisTask:
+                        layer_cache_dirty = True
+
                 else:
                     logger.debug("analyzer queue is empty - no work this cycle")
             else:
@@ -123,6 +126,7 @@ def handle_image_analyzer(*args, **kwargs):
                     alive_threads.append(athread)
             threads = alive_threads
 
+            # TODO: would like to fold this into the ImageAnalysisTask thread, but this basically assumes a mutex. Can add RLock later
             if layer_cache_enable and layer_cache_dirty and len(threads) == 0:
                 logger.debug("running layer cache handler")
                 try:
