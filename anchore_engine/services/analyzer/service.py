@@ -11,10 +11,10 @@ import anchore_engine.subsys
 from anchore_engine.clients.services import internal_client_for
 from anchore_engine.clients.services.simplequeue import SimpleQueueClient
 from anchore_engine.service import ApiService
-from anchore_engine.services.analyzer.analysis import process_analyzer_job, is_analysis_message, ImageAnalysisTask
+from anchore_engine.services.analyzer.analysis import is_analysis_message, ImageAnalysisTask
 from anchore_engine.services.analyzer.layer_cache import handle_layer_cache
 from anchore_engine.services.analyzer.tasks import WorkerTask
-from anchore_engine.services.analyzer.imports import process_import_job, is_import_message, ImportTask
+from anchore_engine.services.analyzer.imports import is_import_message, ImportTask
 from anchore_engine.subsys import logger, metrics
 
 IMAGE_ANALYSIS_QUEUE = "images_to_analyze"
