@@ -1004,6 +1004,7 @@ def run_anchore_analyzers(staging_dirs, imageDigest, imageId, localconfig):
     for f in list_analyzers():
         cmdstr = " ".join([f, configdir, imageId, unpackdir, outputdir, unpackdir])
         if True:
+            logger.info('Executing analyzer %s', f)
             timer = time.time()
             try:
                 rc, sout, serr = utils.run_command(cmdstr)

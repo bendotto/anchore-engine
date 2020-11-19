@@ -14,6 +14,16 @@ def catalog_image(image, unpackdir):
     Catalog the given image with syft, keeping only select artifacts in the returned results.
     """
     all_results = run_syft(image)
+    return convert_syft_to_engine(all_results, unpackdir)
+
+
+def convert_syft_to_engine(all_results, unpackdir):
+    """
+    Do the conversion from syft format to engine format
+
+    :param all_results:
+    :return:
+    """
 
     # transform output into analyzer-module/service "raw" analyzer json document
     nested_dict = lambda: collections.defaultdict(nested_dict)

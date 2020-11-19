@@ -149,3 +149,68 @@ def parse_dockerimage_string(instr, strict=True):
         ret["pullstring"] = None
 
     return ret
+
+
+class DockerImageReference:
+    """
+    An object representing an image reference in a registry
+    """
+    _tag_pullstring_format = '{registry}/{repository}:{tag}'
+    _digest_pullstring_format = '{registry}/{repository}@{digest}'
+
+    def __init__(self):
+        self.host = None
+        self.port = None
+        self.registry = None
+        self.repository = None
+        self.tag = None
+        self.registry = None
+        self.digest = None
+        self.image_id = None
+
+    def has_tag(self):
+        return self.tag is not None
+
+    def has_digest(self):
+        return self.digest is not None
+
+    def has_id(self):
+        return self.image_id is not None
+
+    def tag_pullstring(self):
+        assert self.registry and self.repository and self.tag
+        return self._tag_pullstring_format.format(registry=self.registry, repository=self.repository, tag=self.tag)
+
+    def digest_pullstring(self):
+        assert self.registry and self.repository and self.digest
+        return self._digest_pullstring_format.format(registry=self.registry, repository=self.repository, digest=self.digest)
+
+    @classmethod
+    def from_string(cls, input_string, strict=True):
+        parsed = parse_dockerimage_string(input_string, strict)
+        if not parsed:
+            raise ValueError('invalid format for docker reference: {}'.format(input_string))
+
+        return cls.from_info_dict(parsed)
+
+    @classmethod
+    def from_info_dict(cls, image_info: dict):
+        """
+
+        :param image_info: dictionary output confirmant to output from the parse_dockerimage_string() function
+        :return:
+        """
+
+        i = DockerImageReference()
+        i.host = image_info.get('host')
+        i.port = image_info.get('port')
+        i.registry = image_info.get('registry')
+        i.repository = image_info.get('repo')
+        i.tag = image_info.get('tag')
+        i.digest = image_info.get('digest')
+        i.image_id = image_info.get('imageId')
+        return i
+
+
+
+

@@ -54,6 +54,12 @@ from anchore_engine.service import ApiService, LifeCycleStages
 from anchore_engine.common.helpers import make_policy_record
 from anchore_engine.subsys.identities import manager_factory
 from anchore_engine.services.catalog import archiver
+from anchore_engine.common.schemas import (
+    QueueMessage,
+    AnalysisQueueMessage,
+    ImportQueueMessage,
+    ImportManifest,
+)
 from anchore_engine.subsys.object_store.config import (
     DEFAULT_OBJECT_STORE_MANAGER_ID,
     ANALYSIS_ARCHIVE_MANAGER_ID,
@@ -1468,7 +1474,9 @@ def handle_analyzer_queue(*args, **kwargs):
             image_record = basestate_image_record
 
             if image_record["image_status"] == taskstate.complete_state("image_status"):
-                logger.debug("image check")
+                logger.debug(
+                    "image check of queue status for digest {}".format(imageDigest)
+                )
                 if image_record["analysis_status"] == taskstate.base_state("analyze"):
                     logger.debug("image in base state - " + str(imageDigest))
                     try:
@@ -1485,6 +1493,15 @@ def handle_analyzer_queue(*args, **kwargs):
                         )
                     except Exception as err:
                         parent_manifest = {}
+
+                    # Handle the different message types here, can be an import message or an analysis message
+                    # if manifest.get('type') == 'import':
+                    #     expected = ImportQueueMessage()
+                    #     expected.operation_uuid == image_record[]
+                    #
+                    #     # This is an import manifest, so queue an import job instead of an analysis job
+                    #
+                    # else: <do existing code here>
 
                     qobj = {}
                     qobj["userId"] = userId

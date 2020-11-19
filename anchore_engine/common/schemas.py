@@ -210,11 +210,10 @@ class ImageMetadata(JsonSerializable):
 
     """
     class ImageMetadataV1Schema(Schema):
-        digest = fields.String(required=True)
-        local_image_id = fields.String(allow_none=True)
         layers = fields.List(fields.Nested(ImageLayerMetadata.ImageLayerMetadataV1Schema), allow_none=True)
         size = fields.Int(allow_none=True)
         platform = fields.Nested(ImagePlatform.ImagePlatformV1Schema, allow_none=True)
+        created_at = fields.DateTime(allow_none=True)
 
         @post_load
         def make(self, data, **kwargs):
@@ -222,12 +221,11 @@ class ImageMetadata(JsonSerializable):
 
     __schema__ = ImageMetadataV1Schema()
 
-    def __init__(self, digest=None, local_image_id=None, layers=None, size=None, platform=None):
-        self.digest = digest
-        self.local_image_id = local_image_id
+    def __init__(self, layers=None, size=None, platform=None, created_at=None):
         self.layers = layers
         self.size = size
         self.platform = platform
+        self.created_at = created_at
 
 
 class ImportManifest(JsonSerializable):
@@ -236,6 +234,10 @@ class ImportManifest(JsonSerializable):
         tags = fields.List(fields.String(), allow_none=True)
         annotations = fields.Mapping(keys=fields.String(), values=fields.String(), allow_none=True)
         contents = fields.List(fields.String()) # The list of content digests
+        digest = fields.String(required=True)
+        parent_digest = fields.String(allow_none=True) # The digest of the manifest-list parent object if this was a pulled image in a multi-arch tag and that data is available
+        local_image_id = fields.String(allow_none=True)
+        operation_uuid = fields.String(required=True)
         # Add type field w/digest
 
         @post_load
@@ -244,11 +246,15 @@ class ImportManifest(JsonSerializable):
 
     __schema__ = ImportManifestV1Schema()
 
-    def __init__(self, metadata=None, tags=None, annotations=None, contents=None):
+    def __init__(self, digest=None, parent_digest=None, local_image_id=None, metadata=None, tags=None, annotations=None, contents=None, operation_uuid=None):
         self.metadata = metadata
         self.tags = tags
         self.annotations = annotations
         self.contents = contents
+        self.digest = digest
+        self.local_image_id = local_image_id
+        self.parent_digest = parent_digest
+        self.operation_uuid = operation_uuid
 
 
 class ImportQueueMessage(JsonSerializable):
@@ -264,9 +270,16 @@ class ImportQueueMessage(JsonSerializable):
         }
 
         """
+
         account = fields.String(data_key='userId')
-        operation_uuid = fields.UUID()
+        image_digest = fields.String(data_key='imageDigest')
         manifest = fields.Nested(ImportManifest.ImportManifestV1Schema)
+        parent_manifest = fields.Nested(ImportManifest.ImportManifestV1Schema)
+        type = fields.String(default='analysis')
+
+        # account = fields.String(data_key='userId')
+        # operation_uuid = fields.UUID()
+        # manifest = fields.Nested(ImportManifest.ImportManifestV1Schema)
 
         @post_load
         def make(self, data, **kwargs):
@@ -274,10 +287,16 @@ class ImportQueueMessage(JsonSerializable):
 
     __schema__ = ImportQueueMessageV1Schema()
 
-    def __init__(self, account=None, operation_uuid=None, manifest=None):
+    # def __init__(self, account=None, operation_uuid=None, manifest=None):
+    #     self.account = account
+    #     self.operation_uuid = operation_uuid
+    #     self.manifest = manifest
+    def __init__(self, account=None, image_digest=None, manifest=None, parent_manifest=None, type=None):
         self.account = account
-        self.operation_uuid = operation_uuid
+        self.image_digest = image_digest
         self.manifest = manifest
+        self.parent_manifest = parent_manifest
+        self.type = type
 
 
 class FeedAPIGroupRecord(JsonSerializable):

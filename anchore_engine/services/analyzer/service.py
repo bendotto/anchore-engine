@@ -37,9 +37,9 @@ def handle_metrics(*args, **kwargs):
 
     while True:
         try:
-            localconfig = localconfig.get_config()
+            conf = localconfig.get_config()
             try:
-                tmpdir = localconfig['tmp_dir']
+                tmpdir = conf['tmp_dir']
                 svfs = os.statvfs(tmpdir)
                 available_bytes = svfs.f_bsize * svfs.f_bavail
                 metrics.gauge_set("anchore_tmpspace_available_bytes", available_bytes)
@@ -75,8 +75,8 @@ def handle_image_analyzer(*args, **kwargs):
 
     cycle_timer = kwargs['mythread']['cycle_timer']
 
-    localconfig = anchore_engine.configuration.localconfig.get_config()
-    myconfig = localconfig['services']['analyzer']
+    config = localconfig.get_config()
+    myconfig = config['services']['analyzer']
     max_analyze_threads = int(myconfig.get('max_threads', 1))
     layer_cache_enable = myconfig.get('layer_cache_enable', False)
     logger.debug("max analysis threads: " + str(max_analyze_threads))
@@ -119,7 +119,7 @@ def handle_image_analyzer(*args, **kwargs):
                     try:
                         logger.debug("thread completed - joining")
                         athread.join()
-                        logger.info("Image analysis thread completed")
+                        logger.info("worker thread completed")
                     except Exception as err:
                         logger.warn("cannot join thread - exception: " + str(err))
                 else:
