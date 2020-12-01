@@ -10,15 +10,19 @@ from anchore_engine.subsys.object_store import manager
 from anchore_engine.common.helpers import make_response_error
 from anchore_engine.subsys import logger
 from anchore_engine.db import session_scope
-from anchore_engine.db.entities.catalog import ImageImportOperation, ImageImportContent, ImportState
-from anchore_engine.utils import datetime_to_rfc3339
+from anchore_engine.db.entities.catalog import (
+    ImageImportOperation,
+    ImageImportContent,
+    ImportState,
+)
+from anchore_engine.utils import datetime_to_rfc3339, ensure_str, ensure_bytes
 from anchore_engine.common.schemas import ImportManifest
 
 authorizer = get_authorizer()
 
-IMPORT_BUCKET = 'image_content_imports'
+IMPORT_BUCKET = "image_content_imports"
 
-MAX_UPLOAD_SIZE = 100 * 1024 * 1024 # 100 MB
+MAX_UPLOAD_SIZE = 100 * 1024 * 1024  # 100 MB
 OPERATION_EXPIRATION_DELTA = datetime.timedelta(hours=24)
 supported_content_types = ["packages"]
 
@@ -27,7 +31,16 @@ supported_content_types = ["packages"]
 def list_import_packages(operation_id: str):
     try:
         with session_scope() as db_session:
-            resp = [x.digest for x in db_session.query(ImageImportContent).join(ImageImportContent.operation).filter(ImageImportOperation.account==ApiRequestContextProxy.namespace(), ImageImportOperation.uuid==operation_id).all()]
+            resp = [
+                x.digest
+                for x in db_session.query(ImageImportContent)
+                .join(ImageImportContent.operation)
+                .filter(
+                    ImageImportOperation.account == ApiRequestContextProxy.namespace(),
+                    ImageImportOperation.uuid == operation_id,
+                )
+                .all()
+            ]
 
         return resp, 200
     except Exception as ex:
@@ -66,7 +79,12 @@ def list_operations():
     """
     try:
         with session_scope() as db_session:
-            resp = [x.to_json() for x in db_session.query(ImageImportOperation).filter_by(account=ApiRequestContextProxy.namespace()).all()]
+            resp = [
+                x.to_json()
+                for x in db_session.query(ImageImportOperation)
+                .filter_by(account=ApiRequestContextProxy.namespace())
+                .all()
+            ]
 
         return resp, 200
     except Exception as ex:
@@ -83,7 +101,13 @@ def get_operation(operation_id):
     """
     try:
         with session_scope() as db_session:
-            record = db_session.query(ImageImportOperation).filter_by(account=ApiRequestContextProxy.namespace(), uuid=operation_id).one_or_none()
+            record = (
+                db_session.query(ImageImportOperation)
+                .filter_by(
+                    account=ApiRequestContextProxy.namespace(), uuid=operation_id
+                )
+                .one_or_none()
+            )
             if record:
                 resp = record.to_json()
             else:
@@ -94,11 +118,72 @@ def get_operation(operation_id):
         return make_response_error(ex, in_httpcode=500), 500
 
 
-# @authorizer.requires_account(with_types=INTERNAL_SERVICE_ALLOWED)
-# def get_content_uploads(operation_id, content_type):
-#     with session_scope() as db_session:
-#         uploads = db_session.query(ImageImportContent).join(ImageImportContent.operation).filter(ImageImportOperation.account==ApiRequestContextProxy.namespace(), ImageImportOperation.uuid==operation_id).filter(ImageImportContent.operation_id==operation_id, ImageImportContent.content_type==content_type).all()
-#         return [{'uuid': x.uuid, 'digest': x.digest, 'created_at': x.created_at} for x in uploads], 200
+@authorizer.requires_account(with_types=INTERNAL_SERVICE_ALLOWED)
+def invalidate_operation(operation_id):
+    """
+    DELETE /imports/images/{operation_id}
+
+    :param operation_id:
+    :return:
+    """
+    try:
+        with session_scope() as db_session:
+            record = (
+                db_session.query(ImageImportOperation)
+                .filter_by(
+                    account=ApiRequestContextProxy.namespace(), uuid=operation_id
+                )
+                .one_or_none()
+            )
+            if record:
+                if record.status not in [ImportState.invalidated, ImportState.complete]:
+                    record.status = ImportState.invalidated
+                    db_session.flush()
+
+                resp = record.to_json()
+            else:
+                raise api_exceptions.ResourceNotFound(resource=operation_id, detail={})
+
+        return resp, 200
+    except Exception as ex:
+        return make_response_error(ex, in_httpcode=500), 500
+
+
+@authorizer.requires_account(with_types=INTERNAL_SERVICE_ALLOWED)
+def update_operation(operation_id, operation):
+    """
+    PUT /imports/images/{operation_id}
+
+    Will only update the status, no other fields
+
+    :param operation_id:
+    :param operation: content of operation to update
+    :return:
+    """
+    if not operation.get("status"):
+        raise api_exceptions.BadRequest("status field required", detail={})
+
+    try:
+        with session_scope() as db_session:
+            record = (
+                db_session.query(ImageImportOperation)
+                .filter_by(
+                    account=ApiRequestContextProxy.namespace(), uuid=operation_id
+                )
+                .one_or_none()
+            )
+            if record:
+                if record.status.is_active():
+                    record.status = operation.get("status")
+                    db_session.flush()
+
+                resp = record.to_json()
+            else:
+                raise api_exceptions.ResourceNotFound(resource=operation_id, detail={})
+
+        return resp, 200
+    except Exception as ex:
+        return make_response_error(ex, in_httpcode=500), 500
 
 
 def generate_import_bucket():
@@ -106,91 +191,163 @@ def generate_import_bucket():
 
 
 def generate_key(account, op_id, content_type, digest):
-    return '{}/{}/{}/{}'.format(account, op_id, content_type, digest)
+    return "{}/{}/{}/{}".format(account, op_id, content_type, digest)
 
 
 @authorizer.requires_account(with_types=INTERNAL_SERVICE_ALLOWED)
 def import_image_dockerfile(operation_id):
     logger.info("Got dockerfile: {}".format(request.data))
-    return '', 200
+    return "", 200
+
 
 @authorizer.requires_account(with_types=INTERNAL_SERVICE_ALLOWED)
-def import_image_packages(operation_id, sbom):
+def import_image_packages(operation_id):
     """
     POST /imports/images/{operation_id}/packages
 
     :param operation_id:
-    :param content:
+    :param sbom:
+    :return:
+    """
+
+    return content_upload(operation_id, "packages", request)
+
+
+@authorizer.requires_account(with_types=INTERNAL_SERVICE_ALLOWED)
+def import_image_dockerfile(operation_id):
+    """
+    POST /imports/images/{operation_id}/dockerfile
+
+    :param operation_id:
+    :param sbom:
+    :return:
+    """
+
+    return content_upload(operation_id, "dockerfile", request)
+
+
+@authorizer.requires_account(with_types=INTERNAL_SERVICE_ALLOWED)
+def import_image_manifest(operation_id):
+    """
+    POST /imports/images/{operation_id}/manifest
+
+    :param operation_id:
+    :return:
+    """
+
+    return content_upload(operation_id, "manifest", request)
+
+
+@authorizer.requires_account(with_types=INTERNAL_SERVICE_ALLOWED)
+def import_image_parent_manifest(operation_id):
+    """
+    POST /imports/images/{operation_id}/parent_manifest
+
+    :param operation_id:
+    :return:
+    """
+
+    return content_upload(operation_id, "parent_manifest", request)
+
+
+def content_upload(operation_id, content_type, request):
+    """
+    Generic handler for multiple types of content uploads. Still operates at the API layer
+
+    :param operation_id:
+    :param content_type:
+    :param request:
     :return:
     """
     try:
         with session_scope() as db_session:
-            record = db_session.query(ImageImportOperation).filter_by(account=ApiRequestContextProxy.namespace(), uuid=operation_id).one_or_none()
+            record = (
+                db_session.query(ImageImportOperation)
+                .filter_by(
+                    account=ApiRequestContextProxy.namespace(), uuid=operation_id
+                )
+                .one_or_none()
+            )
             if not record:
                 raise api_exceptions.ResourceNotFound(resource=operation_id, detail={})
 
-        if not request.content_length:
-            raise api_exceptions.BadRequest(message='Request must contain content-length header', detail={})
-        elif request.content_length > 100 * 1024 * 1204:
-            raise api_exceptions.BadRequest(message='too large. Max size of 100MB supported for content', detail={'content-length': request.content_length})
+            if not request.content_length:
+                raise api_exceptions.BadRequest(
+                    message="Request must contain content-length header", detail={}
+                )
+            elif request.content_length > MAX_UPLOAD_SIZE:
+                raise api_exceptions.BadRequest(
+                    message="too large. Max size of 100MB supported for content",
+                    detail={"content-length": request.content_length},
+                )
 
-        hasher = sha256(request.data)  # Direct bytes hash
-        digest = hasher.digest().hex()
+            digest, created_at = save_import_content(
+                db_session, operation_id, request.data, content_type
+            )
 
-        import_bucket = generate_import_bucket()
-        key = generate_key(ApiRequestContextProxy.namespace(), operation_id, 'packages', digest)
-
-        with session_scope() as db_session:
-            content_record = ImageImportContent()
-            content_record.account = ApiRequestContextProxy.namespace()
-            content_record.digest = digest
-            content_record.content_type = 'packages'
-            content_record.operation_id = operation_id
-
-            # TODO:
-            #content_record.stored_bucket = import_bucket
-            #content_record.stored_key = key
-
-            db_session.add(content_record)
-            db_session.flush()
-
-            try:
-                mgr = manager.object_store.get_manager()
-                resp = mgr.put_document(ApiRequestContextProxy.namespace(), import_bucket, archiveId=key, data=sbom)
-            except:
-                db_session.delete(content_record)
-                raise
-
-        resp = {
-            "digest": digest,
-            "created_at": datetime_to_rfc3339(datetime.datetime.utcnow())
-        }
+        resp = {"digest": digest, "created_at": created_at}
 
         return resp, 200
     except api_exceptions.AnchoreApiError as ex:
-        return make_response_error(ex, in_httpcode=ex.__response_code__), ex.__response_code__
+        return (
+            make_response_error(ex, in_httpcode=ex.__response_code__),
+            ex.__response_code__,
+        )
     except Exception as ex:
-        logger.exception('Unexpected error in api processing')
+        logger.exception("Unexpected error in api processing")
         return make_response_error(ex, in_httpcode=500), 500
 
 
-# def invalid_import_manifest_digests(operation_id: str, manifest: ImportManifest) -> set:
-#     """
-#
-#     :param operation_id:
-#     :param manifest:
-#     :return: set of invalid content references, emtpy set if the content manifest checks out
-#     """
-#
-#     # Verify the content in the manifest exists and has the right digests.
-#     contents = {x.get('uuid'): x.get('digest') for x in manifest.metadata}
-#
-#     with session_scope() as db_session:
-#         content_records = db_session.query(ImageImportContent).filter(ImageImportContent.operation_id == operation_id, ImageImportContent.digest.in_([x[0] for x in contents.keys()])).all()
-#         found_content = set([x.uuid for x in content_records])
-#
-#         missing_content = set(contents.keys()).difference(found_content)
-#         if missing_content and len(missing_content) > 0:
-#             return missing_content
-#         else:
-#             return set()
+def save_import_content(
+    db_session, operation_id: str, content: bytes, content_type: str
+) -> tuple:
+    """
+    Generic handler for content type saving that does not do any validation.
+
+    :param operation_id:
+    :param sbom:
+    :return:
+    """
+    hasher = sha256(content)  # Direct bytes hash
+    digest = hasher.digest().hex()
+
+    found_content = (
+        db_session.query(ImageImportContent)
+        .filter(
+            ImageImportContent.operation_id == operation_id,
+            ImageImportContent.content_type == content_type,
+            ImageImportContent.digest == digest,
+        )
+        .one_or_none()
+    )
+
+    if found_content:
+        logger.info("Found existing record {}".format(found_content.digest))
+        # Short circuit since already present
+        return found_content.digest, found_content.created_at
+
+    import_bucket = generate_import_bucket()
+    key = generate_key(
+        ApiRequestContextProxy.namespace(), operation_id, content_type, digest
+    )
+
+    content_record = ImageImportContent()
+    content_record.account = ApiRequestContextProxy.namespace()
+    content_record.digest = digest
+    content_record.content_type = content_type
+    content_record.operation_id = operation_id
+    content_record.storage_bucket = import_bucket
+    content_record.storage_key = key
+
+    db_session.add(content_record)
+    db_session.flush()
+
+    mgr = manager.object_store.get_manager()
+    resp = mgr.put_document(
+        ApiRequestContextProxy.namespace(), import_bucket, key, ensure_str(content)
+    )
+    if not resp:
+        # Abort the transaction
+        raise Exception("Could not save into object store")
+
+    return digest, content_record.created_at

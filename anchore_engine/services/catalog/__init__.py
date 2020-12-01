@@ -35,6 +35,11 @@ from anchore_engine.db import (
     AccountTypes,
     ArchiveTransitionRule,
 )
+from anchore_engine.db.entities.catalog import (
+    ImageImportContent,
+    ImageImportOperation,
+    ImportState,
+)
 from anchore_engine.subsys import (
     notifications,
     taskstate,
@@ -54,16 +59,16 @@ from anchore_engine.service import ApiService, LifeCycleStages
 from anchore_engine.common.helpers import make_policy_record
 from anchore_engine.subsys.identities import manager_factory
 from anchore_engine.services.catalog import archiver
+from anchore_engine.subsys.object_store.config import (
+    DEFAULT_OBJECT_STORE_MANAGER_ID,
+    ANALYSIS_ARCHIVE_MANAGER_ID,
+    ALT_OBJECT_STORE_CONFIG_KEY,
+)
 from anchore_engine.common.schemas import (
     QueueMessage,
     AnalysisQueueMessage,
     ImportQueueMessage,
     ImportManifest,
-)
-from anchore_engine.subsys.object_store.config import (
-    DEFAULT_OBJECT_STORE_MANAGER_ID,
-    ANALYSIS_ARCHIVE_MANAGER_ID,
-    ALT_OBJECT_STORE_CONFIG_KEY,
 )
 
 ##########################################################
@@ -1479,6 +1484,9 @@ def handle_analyzer_queue(*args, **kwargs):
                 )
                 if image_record["analysis_status"] == taskstate.base_state("analyze"):
                     logger.debug("image in base state - " + str(imageDigest))
+
+                    # TODO: This is expensive once the queue gets longer... need to find a more efficient way to check status
+                    # The right way is keep a msg/task ID in the db record so we can do a quick lookup in the queue for the id rather than full content match
                     try:
                         manifest = obj_mgr.get_document(
                             userId, "manifest_data", image_record["imageDigest"]
@@ -1493,15 +1501,6 @@ def handle_analyzer_queue(*args, **kwargs):
                         )
                     except Exception as err:
                         parent_manifest = {}
-
-                    # Handle the different message types here, can be an import message or an analysis message
-                    # if manifest.get('type') == 'import':
-                    #     expected = ImportQueueMessage()
-                    #     expected.operation_uuid == image_record[]
-                    #
-                    #     # This is an import manifest, so queue an import job instead of an analysis job
-                    #
-                    # else: <do existing code here>
 
                     qobj = {}
                     qobj["userId"] = userId
@@ -2412,6 +2411,98 @@ class CatalogService(ApiService):
                         )
 
 
+def handle_import_gc(*args, **kwargs):
+    """
+    Cleanup import operations that are expired or complete and reclaim resources
+
+    :param args:
+    :param kwargs:
+    :return:
+    """
+
+    watcher = str(kwargs["mythread"]["taskType"])
+    handler_success = True
+
+    timer = time.time()
+    logger.debug("FIRING: " + str(watcher))
+
+    try:
+        cleanup_id = []
+        # iterate over all images marked for deletion
+        with db.session_scope() as dbsession:
+            to_clean = (
+                dbsession.query(ImageImportOperation)
+                .filter(
+                    ImageImportOperation.status.in_(
+                        [
+                            ImportState.invalidated,
+                            ImportState.complete,
+                            ImportState.failed,
+                        ]
+                    )
+                )
+                .all()
+            )
+
+        for to_be_deleted in queued_images:
+            try:
+                account = to_be_deleted["userId"]
+                digest = to_be_deleted["imageDigest"]
+
+                logger.debug(
+                    "Starting image gc for account id: %s, digest: %s"
+                    % (account, digest)
+                )
+
+                with db.session_scope() as dbsession:
+                    logger.debug("Checking image status one final time")
+                    expected_status = taskstate.queued_state("image_status")
+                    current_status = db_catalog_image.get_image_status(
+                        account, digest, dbsession
+                    )
+                    if current_status and current_status == expected_status:
+                        # set force to true since all deletion checks should be cleared at this point
+                        retobj, httpcode = catalog_impl.do_image_delete(
+                            account, to_be_deleted, dbsession, force=True
+                        )
+                        if httpcode != 200:
+                            logger.warn(
+                                "Image deletion failed with error: {}".format(retobj)
+                            )
+                    else:
+                        logger.warn(
+                            "Skipping image gc due to status check mismatch. account id: %s, digest: %s, current status: %s, expected status: %s"
+                            % (account, digest, current_status, expected_status)
+                        )
+                # not necessary to state transition to deleted as the records should have gone
+            except:
+                logger.exception("Error deleting image, may retry on next cycle")
+                # TODO state transition to faulty to avoid further usage?
+    except Exception as err:
+        logger.warn("failure in handler - exception: " + str(err))
+
+    logger.debug("FIRING DONE: " + str(watcher))
+    try:
+        kwargs["mythread"]["last_return"] = handler_success
+    except:
+        pass
+
+    if anchore_engine.subsys.metrics.is_enabled() and handler_success:
+        anchore_engine.subsys.metrics.summary_observe(
+            "anchore_monitor_runtime_seconds",
+            time.time() - timer,
+            function=watcher,
+            status="success",
+        )
+    else:
+        anchore_engine.subsys.metrics.summary_observe(
+            "anchore_monitor_runtime_seconds",
+            time.time() - timer,
+            function=watcher,
+            status="fail",
+        )
+
+
 watchers = {
     "image_watcher": {
         "handler": handle_image_watcher,
@@ -2549,6 +2640,18 @@ watchers = {
         "handler": handle_image_gc,
         "task_lease_id": "image_gc",
         "taskType": "handle_image_gc",
+        "args": [],
+        "cycle_timer": 60,
+        "min_cycle_timer": 60,
+        "max_cycle_timer": 86400,
+        "last_queued": 0,
+        "last_return": False,
+        "initialized": False,
+    },
+    "import_gc": {
+        "handler": handle_import_gc,
+        "task_lease_id": "import_gc",
+        "taskType": "handle_import_gc",
         "args": [],
         "cycle_timer": 60,
         "min_cycle_timer": 60,

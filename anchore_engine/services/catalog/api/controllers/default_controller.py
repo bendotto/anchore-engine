@@ -145,7 +145,6 @@ def add_image(
                 "allow_dockerfile_update": allow_dockerfile_update,
             },
         )
-
         if image_metadata.get("import_operation_id") and from_archive:
             raise BadRequest(
                 'Cannot specify both "from_archive=True" query parameter and include an import manifest in the payload',
@@ -168,15 +167,8 @@ def add_image(
                 ) = anchore_engine.services.catalog.catalog_impl.image_imageDigest(
                     session, request_inputs, digest
                 )
-                (
-                    return_object,
-                    httpcode,
-                ) = anchore_engine.services.catalog.catalog_impl.image_imageDigest(
-                    session, request_inputs, digest
-                )
 
-        elif image_metadata.get("import_operation_id"):
-            operation_id = image_metadata.get("import_operation_id")
+        elif image_metadata.get("import_manifest"):
             try:
                 import_manifest = ImportManifest.from_json(
                     image_metadata["import_manifest"]
@@ -190,31 +182,28 @@ def add_image(
                     message="invalid import manifest", detail={"error": str(err)}
                 )
 
-            # If annotations in both the wrapper and import manifest, then merge them
-            if image_metadata.get("annotations"):
-                import_manifest.annotations.update(image_metadata.get("annotations"))
+            annotations = image_metadata.get("annotations", {})
 
-            dockerfile = image_metadata.get("dockerfile")
+            # Don't accept an in-line dockerfile
+            if image_metadata.get("dockerfile"):
+                raise BadRequest(
+                    "Cannot provide dockerfile content directly in import payload. Use the import operation APIs to load the dockerfile before calling this endpoint",
+                    detail={},
+                )
 
             with db.session_scope() as session:
                 # allow_dockerfile_update is a poor proxy for the 'force' option
                 return_object = anchore_engine.services.catalog.importer.import_image(
                     session,
                     account=ApiRequestContextProxy.namespace(),
-                    operation_id=operation_id,
+                    operation_id=import_manifest.operation_uuid,
                     import_manifest=import_manifest,
-                    dockerfile_content=dockerfile,
                     force=allow_dockerfile_update,
+                    annotations=annotations,
                 )
                 httpcode = 200
         else:
             with db.session_scope() as session:
-                (
-                    return_object,
-                    httpcode,
-                ) = anchore_engine.services.catalog.catalog_impl.image(
-                    session, request_inputs, bodycontent=image_metadata
-                )
                 (
                     return_object,
                     httpcode,

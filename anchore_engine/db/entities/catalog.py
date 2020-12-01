@@ -737,11 +737,19 @@ class Lease(Base, UtilMixin):
 # Image import entities
 class ImportState(enum.Enum):
     pending = "pending"
-    queued = "queued"
+    queued = "queued"  # TODO: remove this state?
     processing = "processing"
-    complete = "complete"
+    complete = "completed"
     failed = "failed"
     expired = "expired"
+    invalidated = "invalidated"
+
+    def is_active(self):
+        """
+        True if record is in an active state, false if in a terminal state
+        :return:
+        """
+        return self in [ImportState.processing, ImportState.queued, ImportState.pending]
 
 
 class ImageImportOperation(Base, UtilMixin):
@@ -772,9 +780,11 @@ class ImageImportContent(Base, UtilMixin):
 
     operation_id = Column(String, ForeignKey("image_imports.uuid"), primary_key=True)
     digest = Column(String, primary_key=True)
-    content_type = Column(String)
+    content_type = Column(String, primary_key=True)
     created_at = Column(DateTime, default=anchore_now_datetime)
     last_updated = Column(
         DateTime, default=anchore_now_datetime, onupdate=anchore_now_datetime
     )
+    content_storage_bucket = Column(String)
+    content_storage_key = Column(String)
     operation = relationship("ImageImportOperation", back_populates="contents")

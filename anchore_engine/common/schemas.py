@@ -105,7 +105,7 @@ class QueueMessage(JsonSerializable):
         popped = fields.Bool(allow_none=True)
         priority = fields.Bool(allow_none=True)
         visible_at = fields.Int(allow_none=True)
-        version = fields.String(default='1', missing='1') # New version field to support future message schema updates
+        version = fields.String(default='1', missing='1', allow_none=True) # New version field to support future message schema updates
 
         @post_load
         def make(self, data, **kwargs):
@@ -228,17 +228,35 @@ class ImageMetadata(JsonSerializable):
         self.created_at = created_at
 
 
+class ContentTypeDigests(JsonSerializable):
+    class ContentTypeDigestsV1Schema(Schema):
+        packages = fields.String(required=True)
+        dockerfile = fields.String(allow_none=True)
+        manifest = fields.String(allow_none=True)
+        parent_manifest = fields.String(allow_none=True)
+
+        @post_load
+        def make(self, data, **kwargs):
+            return ContentTypeDigests(**data)
+
+    __schema__ = ContentTypeDigestsV1Schema()
+
+    def __init__(self, packages=None, dockerfile=None, manifest=None, parent_manifest=None):
+        self.packages = packages
+        self.dockerfile = dockerfile
+        self.manifest = manifest
+        self.parent_manifest = parent_manifest
+
+
 class ImportManifest(JsonSerializable):
     class ImportManifestV1Schema(Schema):
         metadata = fields.Nested(ImageMetadata.ImageMetadataV1Schema)
         tags = fields.List(fields.String(), allow_none=True)
-        annotations = fields.Mapping(keys=fields.String(), values=fields.String(), allow_none=True)
-        contents = fields.List(fields.String()) # The list of content digests
+        contents = fields.Nested(ContentTypeDigests.ContentTypeDigestsV1Schema)
         digest = fields.String(required=True)
         parent_digest = fields.String(allow_none=True) # The digest of the manifest-list parent object if this was a pulled image in a multi-arch tag and that data is available
         local_image_id = fields.String(allow_none=True)
         operation_uuid = fields.String(required=True)
-        # Add type field w/digest
 
         @post_load
         def make(self, data, **kwargs):
@@ -246,10 +264,9 @@ class ImportManifest(JsonSerializable):
 
     __schema__ = ImportManifestV1Schema()
 
-    def __init__(self, digest=None, parent_digest=None, local_image_id=None, metadata=None, tags=None, annotations=None, contents=None, operation_uuid=None):
+    def __init__(self, digest=None, parent_digest=None, local_image_id=None, metadata=None, tags=None, contents=None, operation_uuid=None):
         self.metadata = metadata
         self.tags = tags
-        self.annotations = annotations
         self.contents = contents
         self.digest = digest
         self.local_image_id = local_image_id
@@ -258,28 +275,16 @@ class ImportManifest(JsonSerializable):
 
 
 class ImportQueueMessage(JsonSerializable):
+    """
+    This message has the same keys as the Analysis message due to implementation details in the queue rebalancer/handler in the catalog.
+    That should be fixed and then allow this to be a more bespoke message format
+    """
     class ImportQueueMessageV1Schema(Schema):
-        """
-        Example for an image import message:
-        {
-            'manifest': {
-            <ImportManifest>
-            },
-            'operation_uuid': <uuid>,
-            'account': 'admin'},
-        }
-
-        """
-
         account = fields.String(data_key='userId')
         image_digest = fields.String(data_key='imageDigest')
-        manifest = fields.Nested(ImportManifest.ImportManifestV1Schema)
-        parent_manifest = fields.Nested(ImportManifest.ImportManifestV1Schema)
-        type = fields.String(default='analysis')
-
-        # account = fields.String(data_key='userId')
-        # operation_uuid = fields.UUID()
-        # manifest = fields.Nested(ImportManifest.ImportManifestV1Schema)
+        manifest = fields.Nested(ImportManifest.ImportManifestV1Schema, allow_none=True)
+        parent_manifest = fields.String(allow_none=True)
+        type = fields.String(default='analysis', allow_none=True)
 
         @post_load
         def make(self, data, **kwargs):
@@ -287,10 +292,6 @@ class ImportQueueMessage(JsonSerializable):
 
     __schema__ = ImportQueueMessageV1Schema()
 
-    # def __init__(self, account=None, operation_uuid=None, manifest=None):
-    #     self.account = account
-    #     self.operation_uuid = operation_uuid
-    #     self.manifest = manifest
     def __init__(self, account=None, image_digest=None, manifest=None, parent_manifest=None, type=None):
         self.account = account
         self.image_digest = image_digest
