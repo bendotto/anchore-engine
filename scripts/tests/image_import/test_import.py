@@ -43,14 +43,14 @@ else:
 
     # Step 1: Get a new operation uuid to use for correlating the data in the upload process
     print("Creating import operation")
-    resp = requests.post("http://localhost:8082/imports/images", auth=AUTHC)
+    resp = requests.post("http://localhost/imports/images", auth=AUTHC)
 
     # There are other fields present, such as "expires_at" timestamp, but all we need to proceed is the operation"s uuid.
     operation_id = check_response(resp).get("uuid")
 
     # Step 2: Upload content (in the future there will likely be more than one content-type during this phase (e.g. FS metadata, content searches etc)
     print("Uploading syft package sbom")
-    resp = requests.post("http://localhost:8082/imports/images/{}/packages".format(operation_id), data=sbom_content, auth=AUTHC, headers=JSON_HEADER)
+    resp = requests.post("http://localhost/imports/images/{}/packages".format(operation_id), data=sbom_content, auth=AUTHC, headers=JSON_HEADER)
     packages_digest = check_response(resp).get("digest")
 
 if dockerfile:
@@ -59,7 +59,7 @@ if dockerfile:
     print("Loaded dockerfile content from {}".format(dockerfile))
 
     print("Uploading dockerfile")
-    resp = requests.post("http://localhost:8082/imports/images/{}/dockerfile".format(operation_id), data=dockerfile_content, auth=AUTHC)
+    resp = requests.post("http://localhost/imports/images/{}/dockerfile".format(operation_id), data=dockerfile_content, auth=AUTHC)
     dockerfile_digest = check_response(resp).get("digest")
 else:
     dockerfile_digest = None
@@ -70,7 +70,7 @@ if manifest:
     print("Loaded manifest content from {}".format(manifest))
 
     print("Uploading image manifest")
-    resp = requests.post("http://localhost:8082/imports/images/{}/manifest".format(operation_id), data=dockerfile_content, auth=AUTHC, headers=JSON_HEADER)
+    resp = requests.post("http://localhost/imports/images/{}/manifest".format(operation_id), data=dockerfile_content, auth=AUTHC, headers=JSON_HEADER)
     manifest_digest = check_response(resp).get("digest")
 else:
     manifest_digest = None
@@ -81,7 +81,7 @@ if parent_manifest:
     print("Loaded parent_manifest content from {}".format(parent_manifest))
 
     print("Uploading parent manifest (manifest list")
-    resp = requests.post("http://localhost:8082/imports/images/{}/parent_manifest".format(operation_id), data=parent_manifest_content, auth=AUTHC, headers=JSON_HEADER)
+    resp = requests.post("http://localhost/imports/images/{}/parent_manifest".format(operation_id), data=parent_manifest_content, auth=AUTHC, headers=JSON_HEADER)
 
     print("Got response: {}".format(resp.status_code))
     print("Payload: {}".format(resp.json()))
@@ -105,31 +105,33 @@ contents = {
 # Step 3: Complete the import by generating the import manifest which includes the conetnt reference as well as other metadata
 # for the image such as digest, annotations, etc
 add_payload = {
-    "import_manifest": {
-        "digest": "sha256:abcdefg",
-        "parent_digest": "sha256:abcdefg",
-        "local_image_id": "sha256:defgabc",
-        "metadata": {
-            "layers": [{"digest": "sha256:cdef", "size": 10000, "location": ""}],
-            "platform": {
-                "os": "linux",
-                "architecture": "amd64"
+    "source": {
+        "import": {
+            "digest": "sha256:abcdefg",
+            "parent_digest": "sha256:abcdefg",
+            "local_image_id": "sha256:defgabc",
+            "metadata": {
+                "layers": [{"digest": "sha256:cdef", "size": 10000, "location": ""}],
+                "platform": {
+                    "os": "linux",
+                    "architecture": "amd64"
+                },
+                "size": 100000
             },
-            "size": 100000
-        },
-        "contents": contents,
-        "tags": ["docker.io/someimage:latest"],
-        "operation_uuid": operation_id
+            "contents": contents,
+            "tags": ["docker.io/someimage:latest"],
+            "operation_uuid": operation_id
+        }
     }
 }
 
 print("Adding image/finalizing")
-resp = requests.post("http://localhost:8082/images", json=add_payload, auth=AUTHC)
+resp = requests.post("http://localhost/images", json=add_payload, auth=AUTHC)
 result = check_response(resp)
 
 # Step 5: Check the /images endpoint to see that the record was added and is in not_analyzed and will transition to "analyzing" and then "analyzed" once import is complete"
 print("Checking image list")
-resp = requests.get("http://localhost:8082/images", auth=AUTHC)
+resp = requests.get("http://localhost/images", auth=AUTHC)
 images = check_response(resp)
 
 # Check for finished

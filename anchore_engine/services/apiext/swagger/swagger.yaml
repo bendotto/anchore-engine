@@ -495,7 +495,7 @@ paths:
       x-swagger-router-controller: anchore_engine.services.apiext.api.controllers.images
       operationId: import_image_archive
       x-anchore-authz-action: importImage
-      summary: Import an anchore image tar.gz archive file.
+      summary: Import an anchore image tar.gz archive file. This is a deprecated API replaced by the "/imports/images" route
       consumes:
         - multipart/form-data
       parameters:
@@ -2641,6 +2641,247 @@ paths:
           schema:
             $ref: "#/definitions/ApiErrorResponse"
       x-swagger-router-controller: anchore_engine.services.apiext.api.controllers.system
+  /imports/images:
+    post:
+      x-swagger-router-controller: anchore_engine.services.apiext.api.controllers.image_imports
+      operationId: create_operation
+      x-anchore-authz-action: importImage
+      summary: "Begin the import of an image analyzed by Syft into the system"
+      produces:
+        - "application/json"
+      responses:
+        200:
+          description: "success"
+          schema:
+            $ref: "#/definitions/ImageImportOperation"
+        500:
+          description: "Internal Error"
+    get:
+      x-swagger-router-controller: anchore_engine.services.apiext.api.controllers.image_imports
+      operationId: list_operations
+      x-anchore-authz-action: importImage
+      summary: "Lists in-progress imports"
+      produces:
+        - "application/json"
+      responses:
+        200:
+          description: "success"
+          schema:
+            $ref: "#/definitions/ImageImports"
+        500:
+          description: "Internal Error"
+  /imports/images/{operation_id}:
+    get:
+      x-swagger-router-controller: anchore_engine.services.apiext.api.controllers.image_imports
+      operationId: get_operation
+      x-anchore-authz-action: importImage
+      summary: "Get detail on a single import"
+      produces:
+        - "application/json"
+      parameters:
+        - name: operation_id
+          in: path
+          type: string
+          required: true
+      responses:
+        200:
+          description: "success"
+          schema:
+            $ref: "#/definitions/ImageImportOperation"
+        500:
+          description: "Internal Error"
+    delete:
+      x-swagger-router-controller: anchore_engine.services.apiext.api.controllers.image_imports
+      operationId: invalidate_operation
+      x-anchore-authz-action: importImage
+      summary: "Invalidate operation ID so it can be garbage collected"
+      produces:
+        - "application/json"
+      parameters:
+        - name: operation_id
+          in: path
+          type: string
+          required: true
+      responses:
+        200:
+          description: "success"
+          schema:
+            $ref: "#/definitions/ImageImportOperation"
+        500:
+          description: "Internal Error"
+  /imports/images/{operation_id}/packages:
+    get:
+      x-swagger-router-controller: anchore_engine.services.apiext.api.controllers.image_imports
+      operationId: list_import_packages
+      x-anchore-authz-action: importImage
+      summary: "List uploaded package manifests"
+      produces:
+        - "application/json"
+      parameters:
+        - name: operation_id
+          in: path
+          type: string
+          required: true
+      responses:
+        200:
+          description: "success"
+          schema:
+            $ref: "#/definitions/ImportContentDigestList"
+        500:
+          description: "Internal Error"
+    post:
+      x-swagger-router-controller: anchore_engine.services.apiext.api.controllers.image_imports
+      operationId: import_image_packages
+      x-anchore-authz-action: importImage
+      summary: "Begin the import of an image analyzed by Syft into the system"
+      produces:
+        - "application/json"
+      consumes:
+        - "application/json"
+      parameters:
+        - name: operation_id
+          in: path
+          type: string
+          required: true
+        - name: sbom
+          in: body
+          required: true
+          schema:
+            $ref: "#/definitions/ImagePackageManifest"
+      responses:
+        200:
+          description: "success"
+          schema:
+            $ref: "#/definitions/ImageImportContentResponse"
+        500:
+          description: "Internal Error"
+  /imports/images/{operation_id}/dockerfile:
+    get:
+      x-swagger-router-controller: anchore_engine.services.apiext.api.controllers.image_imports
+      operationId: list_import_dockerfiles
+      x-anchore-authz-action: importImage
+      summary: "List uploaded dockerfiles"
+      produces:
+        - "application/json"
+      parameters:
+        - name: operation_id
+          in: path
+          type: string
+          required: true
+      responses:
+        200:
+          description: "success"
+          schema:
+            $ref: "#/definitions/ImportContentDigestList"
+        500:
+          description: "Internal Error"
+    post:
+      x-swagger-router-controller: anchore_engine.services.apiext.api.controllers.image_imports
+      operationId: import_image_dockerfile
+      x-anchore-authz-action: importImage
+      summary: "Begin the import of an image analyzed by Syft into the system"
+      produces:
+        - "application/json"
+      consumes:
+        - "text/plain; utf-8"
+      parameters:
+        - name: operation_id
+          in: path
+          type: string
+          required: true
+      responses:
+        200:
+          description: "success"
+          schema:
+            $ref: "#/definitions/ImageImportContentResponse"
+        500:
+          description: "Internal Error"
+  /imports/images/{operation_id}/manifest:
+    get:
+      x-swagger-router-controller: anchore_engine.services.apiext.api.controllers.image_imports
+      operationId: list_import_image_manifests
+      x-anchore-authz-action: importImage
+      summary: "List uploaded image manifests"
+      produces:
+        - "application/json"
+      parameters:
+        - name: operation_id
+          in: path
+          type: string
+          required: true
+      responses:
+        200:
+          description: "success"
+          schema:
+            $ref: "#/definitions/ImportContentDigestList"
+        500:
+          description: "Internal Error"
+    post:
+      x-swagger-router-controller: anchore_engine.services.apiext.api.controllers.image_imports
+      operationId: import_image_manifest
+      x-anchore-authz-action: importImage
+      summary: "Import a docker or OCI distribution manifest to associate with the image"
+      produces:
+        - "application/json"
+      consumes:
+        - "application/vnd.oci.image.manifest.v1+json"
+        - "application/vnd.docker.distribution.manifest.v2+json"
+        - "application/vnd.docker.distribution.manifest.v1+json" # Older Docker spec
+        - "application/vnd.docker.distribution.manifest.v1+prettyjws" # Signed version
+      parameters:
+        - name: operation_id
+          in: path
+          type: string
+          required: true
+      responses:
+        200:
+          description: "success"
+          schema:
+            $ref: "#/definitions/ImageImportContentResponse"
+        500:
+          description: "Internal Error"
+  /imports/images/{operation_id}/parent_manifest:
+    get:
+      x-swagger-router-controller: anchore_engine.services.apiext.api.controllers.image_imports
+      operationId: list_import_parent_manifests
+      x-anchore-authz-action: importImage
+      summary: "List uploaded parent manifests (manifest lists for a tag)"
+      produces:
+        - "application/json"
+      parameters:
+        - name: operation_id
+          in: path
+          type: string
+          required: true
+      responses:
+        200:
+          description: "success"
+          schema:
+            $ref: "#/definitions/ImportContentDigestList"
+        500:
+          description: "Internal Error"
+    post:
+      x-swagger-router-controller: anchore_engine.services.apiext.api.controllers.image_imports
+      operationId: import_image_parent_manifest
+      x-anchore-authz-action: importImage
+      summary: "Import a docker or OCI distribution manifest list to associate with the image"
+      produces:
+        - "application/json"
+      consumes:
+        - "application/vnd.docker.distribution.manifest.list.v2+json"
+        - "application/vnd.oci.image.index.v1+json"
+      parameters:
+        - name: operation_id
+          in: path
+          type: string
+          required: true
+      responses:
+        200:
+          description: "success"
+          schema:
+            $ref: "#/definitions/ImageImportContentResponse"
+        500:
+          description: "Internal Error"
 definitions:
   PaginationProperties:
     type: object
@@ -2867,6 +3108,8 @@ definitions:
         $ref: "#/definitions/RegistryDigestSource"
       archive:
         $ref: "#/definitions/AnalysisArchiveSource"
+      import:
+        $ref: "#/definitions/ImageImportManifest"
   RegistryTagSource:
     type: object
     description: An image reference using a tag in a registry, this is the most common source type.
@@ -4595,3 +4838,127 @@ definitions:
         type: object
       image_digest:
         type: string
+  ImageImportOperation:
+    type: object
+    description: An import record, creating a unique identifier for referencing the operation as well as its state
+    properties:
+      uuid:
+        type: string
+      status:
+        type: string
+        enum:
+          - pending
+          - queued
+          - processing
+          - complete
+          - failed
+          - expired
+      expires_at:
+        type: string
+        format: date-time
+      created_at:
+        type: string
+        format: date-time
+  ImageImportContentResponse:
+    type: object
+    properties:
+      digest:
+        type: string
+      created_at:
+        type: string
+        format: date-time
+  ImageContentDeleteResponse:
+    type: object
+  ImageImportManifest:
+    type: object
+    properties:
+      contents:
+        $ref: "#/definitions/ImportContentDigests"
+      tags:
+        type: array
+        items:
+          type: string
+          description: Full docker reference tags
+          example: "docker.io/library/nginx:latest"
+      digest:
+        type: string
+      parent_digest:
+        type: string
+        description: The digest of the images's manifest-list parent if it was accessed from a multi-arch tag where the tag pointed to a manifest-list. This allows preservation of that relationship in the data
+      local_image_id:
+        type: string
+        description: An "imageId" as used by Docker if available
+      metadata:
+        $ref: "#/definitions/ImageImportManifestMetadata"
+  ImageImportManifestMetadata:
+    type: object
+    properties:
+      layers:
+        type: array
+        items:
+          $ref: "#/definitions/ImageImportLayerMetadata"
+      platform:
+        $ref: "#/definitions/ImageImportPlatform"
+      created_at:
+        type: string
+        format: date-time
+        description: The date of the image build/tagging to allow insertion into the tag history based on another timestamp than the record creation in Anchore. Use this with caution.
+  ImageImportPlatform:
+    type: object
+    description: An image platform is a combination of an OS and an architecture
+    properties:
+      os:
+        type: string
+        example: linux
+      architecture:
+        type: string
+        example: amd64
+  ImageImportLayerMetadata:
+    type: object
+    properties:
+      digest:
+        type: string
+      size:
+        type: integer
+      location:
+        type: string
+  ImportContentDigests:
+    type: object
+    required:
+      - packages
+    description: Digest of content to use in the final import
+    properties:
+      packages:
+        type: string
+        description: Digest to use for the packages content
+      manifest:
+        type: string
+        description: Digest to reference content for the image manifest
+      parent_manifest:
+        type: string
+        description: Digest for reference content for parent manifest
+      dockerfile:
+        type: string
+        description: Digest for reference content for dockerfile
+  Annotations:
+    type: object
+    description: Simple key/value pairs where the value may be optional
+  FinalizeImageImportResponse:
+    type: object
+    properties:
+      uuid:
+        type: string
+      status:
+        type: string
+  ImageImports:
+    type: array
+    items:
+      $ref: "#/definitions/ImageImportOperation"
+  ImagePackageManifest:
+    type: object
+    # TODO: Insert Syft schema v1 here in PackageManifest
+  ImportContentDigestList:
+    type: array
+    items:
+      type: string
+      description: String digest of an uploaded content
