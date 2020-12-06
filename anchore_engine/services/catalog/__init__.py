@@ -1,3 +1,4 @@
+import datetime
 import json
 import os
 import copy
@@ -2411,6 +2412,106 @@ class CatalogService(ApiService):
                         )
 
 
+def delete_import_operation(dbsession, operation: ImageImportOperation):
+    """
+    Execute the deletion path for an import operation
+
+    :param dbsession:
+    :param operation:
+    :return:
+    """
+    logger.info("garbage collecting import operation: %s", operation.uuid)
+
+    obj_mgr = object_store.get_manager()
+    failed = False
+
+    for content in operation.contents:
+        try:
+            logger.debug(
+                "deleting import content digest %s of type %s for operation %s",
+                content.digest,
+                content.content_type,
+                operation.uuid,
+            )
+            obj_mgr.delete_document(
+                userId=operation.account,
+                bucket=content.content_storage_bucket,
+                archiveid=content.content_storage_key,
+            )
+            dbsession.delete(content)
+            logger.debug(
+                "deleted import content digest %s of type %s for operation %s successfully",
+                content.digest,
+                content.content_type,
+                operation.uuid,
+            )
+        except:
+            logger.debug_exception(
+                "could not delete import content of type %s for operation %s with digest %s",
+                content.content_type,
+                operation.uuid,
+                content.digest,
+            )
+            failed = True
+
+    if not failed:
+        uuid = operation.uuid
+        dbsession.delete(operation)
+    else:
+        return operation
+
+    logger.info("garbage collection of import operation %s complete", operation.uuid)
+    return None
+
+
+def garbage_collect_imports():
+    """
+    Flush all imports that are in a state ready for collection
+
+    :return:
+    """
+
+    # iterate over all imports ready for GC
+    with db.session_scope() as dbsession:
+        to_clean = dbsession.query(ImageImportOperation).filter(
+            ImageImportOperation.status.in_(
+                [
+                    ImportState.invalidated,
+                    ImportState.complete,
+                    ImportState.failed,
+                    ImportState.expired,
+                ]
+            )
+        )
+
+        for op in to_clean:
+            try:
+                logger.debug(
+                    "Starting import operation gc for account id: %s, operation id: %s"
+                    % (op.account, op.uuid)
+                )
+                delete_import_operation(dbsession, op)
+            except:
+                logger.exception("Error deleting image, may retry on next cycle")
+
+
+def expire_imports():
+    """
+    Flush all imports that are in a state ready for collection
+    :return:
+    """
+
+    # iterate over all imports ready for GC
+    with db.session_scope() as dbsession:
+        for operation in dbsession.query(ImageImportOperation).filter(
+            ImageImportOperation.status.in_(
+                [ImportState.pending, ImportState.processing]
+            ),
+            ImageImportOperation.expires_at < datetime.datetime.utcnow(),
+        ):
+            operation.status = ImportState.expired
+
+
 def handle_import_gc(*args, **kwargs):
     """
     Cleanup import operations that are expired or complete and reclaim resources
@@ -2427,57 +2528,12 @@ def handle_import_gc(*args, **kwargs):
     logger.debug("FIRING: " + str(watcher))
 
     try:
-        cleanup_id = []
-        # iterate over all images marked for deletion
-        with db.session_scope() as dbsession:
-            to_clean = (
-                dbsession.query(ImageImportOperation)
-                .filter(
-                    ImageImportOperation.status.in_(
-                        [
-                            ImportState.invalidated,
-                            ImportState.complete,
-                            ImportState.failed,
-                        ]
-                    )
-                )
-                .all()
-            )
+        garbage_collect_imports()
+    except Exception as err:
+        logger.warn("failure in handler - exception: " + str(err))
 
-        for to_be_deleted in queued_images:
-            try:
-                account = to_be_deleted["userId"]
-                digest = to_be_deleted["imageDigest"]
-
-                logger.debug(
-                    "Starting image gc for account id: %s, digest: %s"
-                    % (account, digest)
-                )
-
-                with db.session_scope() as dbsession:
-                    logger.debug("Checking image status one final time")
-                    expected_status = taskstate.queued_state("image_status")
-                    current_status = db_catalog_image.get_image_status(
-                        account, digest, dbsession
-                    )
-                    if current_status and current_status == expected_status:
-                        # set force to true since all deletion checks should be cleared at this point
-                        retobj, httpcode = catalog_impl.do_image_delete(
-                            account, to_be_deleted, dbsession, force=True
-                        )
-                        if httpcode != 200:
-                            logger.warn(
-                                "Image deletion failed with error: {}".format(retobj)
-                            )
-                    else:
-                        logger.warn(
-                            "Skipping image gc due to status check mismatch. account id: %s, digest: %s, current status: %s, expected status: %s"
-                            % (account, digest, current_status, expected_status)
-                        )
-                # not necessary to state transition to deleted as the records should have gone
-            except:
-                logger.exception("Error deleting image, may retry on next cycle")
-                # TODO state transition to faulty to avoid further usage?
+    try:
+        expire_imports()
     except Exception as err:
         logger.warn("failure in handler - exception: " + str(err))
 
@@ -2486,21 +2542,6 @@ def handle_import_gc(*args, **kwargs):
         kwargs["mythread"]["last_return"] = handler_success
     except:
         pass
-
-    if anchore_engine.subsys.metrics.is_enabled() and handler_success:
-        anchore_engine.subsys.metrics.summary_observe(
-            "anchore_monitor_runtime_seconds",
-            time.time() - timer,
-            function=watcher,
-            status="success",
-        )
-    else:
-        anchore_engine.subsys.metrics.summary_observe(
-            "anchore_monitor_runtime_seconds",
-            time.time() - timer,
-            function=watcher,
-            status="fail",
-        )
 
 
 watchers = {
