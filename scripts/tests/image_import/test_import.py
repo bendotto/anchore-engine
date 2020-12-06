@@ -39,6 +39,11 @@ else:
     with open(syft_package_sbom) as f:
         sbom_content = bytes(f.read(), "utf-8")
 
+    # Parse into json to extract some info
+    parsed = json.loads(str(sbom_content, 'utf-8'))
+    digest = parsed['source']['target']['digest'] # This is the image id, use it as digest since syft doesn't get a digest from a registry
+    local_image_id = parsed['source']['target']['digest']
+
     print("Loaded content from file: {}".format(syft_package_sbom))
 
     # Step 1: Get a new operation uuid to use for correlating the data in the upload process
@@ -107,19 +112,19 @@ contents = {
 add_payload = {
     "source": {
         "import": {
-            "digest": "sha256:abcdefg",
-            "parent_digest": "sha256:abcdefg",
-            "local_image_id": "sha256:defgabc",
+            "digest": digest,
+            #"parent_digest": None,
+            "local_image_id": local_image_id,
             "metadata": {
                 "layers": [{"digest": "sha256:cdef", "size": 10000, "location": ""}],
                 "platform": {
                     "os": "linux",
                     "architecture": "amd64"
                 },
-                "size": 100000
+                "size": parsed['source']['target']['size']
             },
             "contents": contents,
-            "tags": ["docker.io/someimage:latest"],
+            "tags": parsed['source']['target']['tags'],
             "operation_uuid": operation_id
         }
     }
@@ -131,7 +136,7 @@ result = check_response(resp)
 
 # Step 5: Check the /images endpoint to see that the record was added and is in not_analyzed and will transition to "analyzing" and then "analyzed" once import is complete"
 print("Checking image list")
-resp = requests.get("http://localhost/images", auth=AUTHC)
+resp = requests.get("http://localhost/images/{digest}".format(digest=digest), auth=AUTHC)
 images = check_response(resp)
 
 # Check for finished

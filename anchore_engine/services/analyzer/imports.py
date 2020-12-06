@@ -369,7 +369,6 @@ def import_image(operation_id, account, import_manifest: ImportManifest):
             image_record = update_analysis_complete(
                 catalog_client, image_digest, image_record
             )
-
             try:
                 notify_analysis_complete(image_record, last_analysis_status)
             except Exception as err:
@@ -381,6 +380,12 @@ def import_image(operation_id, account, import_manifest: ImportManifest):
             logger.info(
                 "analysis complete: " + str(account) + " : " + str(image_digest)
             )
+
+            try:
+                catalog_client.update_image_import_status(operation_id, status='complete')
+            except Exception as err:
+                logger.debug_exception('failed updating import status success, will continue and rely on expiration for GC later')
+
 
             try:
                 metrics.counter_inc(name="anchore_import_success")
@@ -405,6 +410,11 @@ def import_image(operation_id, account, import_manifest: ImportManifest):
             image_record = update_analysis_failed(
                 catalog_client, image_digest, image_record
             )
+
+            try:
+                catalog_client.update_image_import_status(operation_id, status='failed')
+            except Exception as err:
+                logger.debug_exception('failed updating import status failure, will continue and rely on expiration for GC later')
 
             if account and image_digest:
                 for image_detail in image_record["image_detail"]:

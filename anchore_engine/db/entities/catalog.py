@@ -17,7 +17,7 @@ from sqlalchemy import (
     Enum,
 )
 import uuid
-from sqlalchemy import inspect
+from sqlalchemy import inspect, ForeignKey
 from sqlalchemy.orm import relationship
 
 from .common import (
@@ -737,9 +737,8 @@ class Lease(Base, UtilMixin):
 # Image import entities
 class ImportState(enum.Enum):
     pending = "pending"
-    queued = "queued"  # TODO: remove this state?
     processing = "processing"
-    complete = "completed"
+    complete = "complete"
     failed = "failed"
     expired = "expired"
     invalidated = "invalidated"
@@ -749,7 +748,7 @@ class ImportState(enum.Enum):
         True if record is in an active state, false if in a terminal state
         :return:
         """
-        return self in [ImportState.processing, ImportState.queued, ImportState.pending]
+        return self in [ImportState.processing, ImportState.pending]
 
 
 class ImageImportOperation(Base, UtilMixin):

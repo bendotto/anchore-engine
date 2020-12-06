@@ -29,6 +29,12 @@ supported_content_types = ["packages"]
 
 @authorizer.requires_account(with_types=INTERNAL_SERVICE_ALLOWED)
 def list_import_packages(operation_id: str):
+    """
+    GET /imports/images/{operations_id}/packages
+
+    :param operation_id:
+    :return:
+    """
     try:
         with session_scope() as db_session:
             resp = [
@@ -174,14 +180,17 @@ def update_operation(operation_id, operation):
             )
             if record:
                 if record.status.is_active():
-                    record.status = operation.get("status")
+                    record.status = ImportState(operation.get("status"))
                     db_session.flush()
-
+                else:
+                    raise api_exceptions.BadRequest('Cannot update status for import in terminal state', detail={'status': record.status})
                 resp = record.to_json()
             else:
                 raise api_exceptions.ResourceNotFound(resource=operation_id, detail={})
 
         return resp, 200
+    except api_exceptions.AnchoreApiError as err:
+        return make_response_error(err, in_httpcode=err.__response_code__), err.__response_code__
     except Exception as ex:
         return make_response_error(ex, in_httpcode=500), 500
 
@@ -192,12 +201,6 @@ def generate_import_bucket():
 
 def generate_key(account, op_id, content_type, digest):
     return "{}/{}/{}/{}".format(account, op_id, content_type, digest)
-
-
-@authorizer.requires_account(with_types=INTERNAL_SERVICE_ALLOWED)
-def import_image_dockerfile(operation_id):
-    logger.info("Got dockerfile: {}".format(request.data))
-    return "", 200
 
 
 @authorizer.requires_account(with_types=INTERNAL_SERVICE_ALLOWED)
@@ -270,6 +273,9 @@ def content_upload(operation_id, content_type, request):
             )
             if not record:
                 raise api_exceptions.ResourceNotFound(resource=operation_id, detail={})
+
+            if not record.status.is_active():
+                raise api_exceptions.ConflictingRequest(message='import operation status does not allow uploads', detail={'status': record.status})
 
             if not request.content_length:
                 raise api_exceptions.BadRequest(

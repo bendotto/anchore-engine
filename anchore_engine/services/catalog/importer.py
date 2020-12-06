@@ -1,5 +1,6 @@
 import enum
 import retrying
+import datetime
 
 from anchore_engine.apis import exceptions as api_exceptions
 from anchore_engine.apis.exceptions import BadRequest
@@ -197,6 +198,9 @@ def import_image(
         )
     )
 
+    # Add annotation indicating this is an import
+    annotations = add_import_annotations(import_manifest, annotations)
+
     # Check for dockerfile updates to an existing image
     found_img = db_catalog_image.get(
         imageDigest=import_manifest.digest, userId=account, session=dbsession
@@ -243,7 +247,7 @@ def import_image(
         parentdigest=import_manifest.parent_digest
         if import_manifest.parent_digest
         else import_manifest.digest,
-        created_at=import_manifest.metadata.created_at,
+        #created_at=
         dockerfile=dockerfile_content,
         dockerfile_mode=dockerfile_mode,
         manifest=manifest, # Fo now use the import manifest as the image manifest. This will get set properly later
@@ -256,3 +260,23 @@ def import_image(
         raise Exception("No record updated/inserted")
 
     return image_record
+
+
+ANCHORE_SYSTEM_ANNOTATION_KEY_PREFIX = "anchore.system/"
+IMPORT_OPERATION_ANNOTATION_KEY = ANCHORE_SYSTEM_ANNOTATION_KEY_PREFIX + "import_operation_id"
+
+
+def add_import_annotations(import_manifest: ImportManifest, annotations: dict = None):
+    """
+    Add annotations to the image to correlate it with the operation_id it's created from
+
+    :param import_manifest:
+    :param annotations:
+    :return: dict with merged annotations to track import
+    """
+
+    if not annotations:
+        annotations = {}
+
+    annotations[IMPORT_OPERATION_ANNOTATION_KEY] = import_manifest.operation_uuid
+    return annotations

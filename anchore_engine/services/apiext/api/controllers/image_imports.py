@@ -9,7 +9,10 @@ from anchore_engine.subsys import logger
 from anchore_engine.clients.services import internal_client_for
 from anchore_engine.clients.services.catalog import CatalogClient
 
-from anchore_engine.apis.authorization import ActionBoundPermission, RequestingAccountValue
+from anchore_engine.apis.authorization import (
+    ActionBoundPermission,
+    RequestingAccountValue,
+)
 
 from anchore_engine.utils import datetime_to_rfc3339, ensure_str, ensure_bytes
 from anchore_engine.common.schemas import ImportManifest
@@ -30,7 +33,9 @@ def create_operation():
     :return:
     """
     try:
-        client = internal_client_for(CatalogClient, userId=ApiRequestContextProxy.namespace())
+        client = internal_client_for(
+            CatalogClient, userId=ApiRequestContextProxy.namespace()
+        )
         resp = client.create_image_import()
         return resp, 200
     except api_exceptions.AnchoreApiError as ex:
@@ -52,8 +57,10 @@ def list_operations():
     """
 
     try:
-        client = internal_client_for(CatalogClient, userId=ApiRequestContextProxy.namespace())
-        resp = client.list_import_operations()
+        client = internal_client_for(
+            CatalogClient, userId=ApiRequestContextProxy.namespace()
+        )
+        resp = client.list_image_import_operations()
         return resp, 200
     except api_exceptions.AnchoreApiError as ex:
         return (
@@ -75,8 +82,10 @@ def get_operation(operation_id):
     """
 
     try:
-        client = internal_client_for(CatalogClient, userId=ApiRequestContextProxy.namespace())
-        resp = client.get_iamge_import_operation(operation_id)
+        client = internal_client_for(
+            CatalogClient, userId=ApiRequestContextProxy.namespace()
+        )
+        resp = client.get_image_import_operation(operation_id)
         return resp, 200
     except api_exceptions.AnchoreApiError as ex:
         return (
@@ -98,7 +107,9 @@ def invalidate_operation(operation_id):
     """
 
     try:
-        client = internal_client_for(CatalogClient, userId=ApiRequestContextProxy.namespace())
+        client = internal_client_for(
+            CatalogClient, userId=ApiRequestContextProxy.namespace()
+        )
         resp = client.cancel_image_import(operation_id)
         return resp, 200
     except api_exceptions.AnchoreApiError as ex:
@@ -120,8 +131,10 @@ def list_import_packages(operation_id):
     :return:
     """
     try:
-        client = internal_client_for(CatalogClient, userId=ApiRequestContextProxy.namespace())
-        resp = client.list_import_contents(operation_id, 'packages')
+        client = internal_client_for(
+            CatalogClient, userId=ApiRequestContextProxy.namespace()
+        )
+        resp = client.list_import_content(operation_id, "packages")
         return resp, 200
     except api_exceptions.AnchoreApiError as ex:
         return (
@@ -142,8 +155,10 @@ def list_import_dockerfiles(operation_id):
     :return:
     """
     try:
-        client = internal_client_for(CatalogClient, userId=ApiRequestContextProxy.namespace())
-        resp = client.list_import_contents(operation_id, 'dockerfile')
+        client = internal_client_for(
+            CatalogClient, userId=ApiRequestContextProxy.namespace()
+        )
+        resp = client.list_import_content(operation_id, "dockerfile")
         return resp, 200
     except api_exceptions.AnchoreApiError as ex:
         return (
@@ -164,8 +179,10 @@ def list_import_image_manifests(operation_id):
     :return:
     """
     try:
-        client = internal_client_for(CatalogClient, userId=ApiRequestContextProxy.namespace())
-        resp = client.list_import_contents(operation_id, 'manifest')
+        client = internal_client_for(
+            CatalogClient, userId=ApiRequestContextProxy.namespace()
+        )
+        resp = client.list_import_content(operation_id, "manifest")
         return resp, 200
     except api_exceptions.AnchoreApiError as ex:
         return (
@@ -186,8 +203,10 @@ def list_import_parent_manifests(operation_id):
     :return:
     """
     try:
-        client = internal_client_for(CatalogClient, userId=ApiRequestContextProxy.namespace())
-        resp = client.list_import_contents(operation_id, 'parent_manifest')
+        client = internal_client_for(
+            CatalogClient, userId=ApiRequestContextProxy.namespace()
+        )
+        resp = client.list_import_content(operation_id, "parent_manifest")
         return resp, 200
     except api_exceptions.AnchoreApiError as ex:
         return (
@@ -259,8 +278,15 @@ def content_upload(operation_id, content_type, request):
     :return:
     """
     try:
-        client = internal_client_for(CatalogClient, userId=ApiRequestContextProxy.namespace())
-        return client.upload_image_import_content(operation_id, content_type, request.data), 200
+        client = internal_client_for(
+            CatalogClient, userId=ApiRequestContextProxy.namespace()
+        )
+        return (
+            client.upload_image_import_content(
+                operation_id, content_type, request.data
+            ),
+            200,
+        )
     except api_exceptions.AnchoreApiError as ex:
         return (
             make_response_error(ex, in_httpcode=ex.__response_code__),
