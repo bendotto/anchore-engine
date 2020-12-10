@@ -4,6 +4,7 @@ Entities for the catalog service including services, users, images, etc. Pretty 
 """
 import datetime
 import enum
+import uuid
 from sqlalchemy import (
     Column,
     Integer,
@@ -15,9 +16,9 @@ from sqlalchemy import (
     Index,
     JSON,
     Enum,
+    ForeignKey,
 )
-import uuid
-from sqlalchemy import inspect, ForeignKey
+from sqlalchemy import inspect
 from sqlalchemy.orm import relationship
 
 from .common import (
@@ -28,6 +29,7 @@ from .common import (
     StringJSON,
     anchore_now_datetime,
 )
+from anchore_engine.utils import datetime_to_rfc3339
 
 
 class Anchore(Base, UtilMixin):
