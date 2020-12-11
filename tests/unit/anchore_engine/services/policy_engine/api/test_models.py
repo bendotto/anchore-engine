@@ -14,8 +14,6 @@ from anchore_engine.services.policy_engine.api.models import (
     LegacyMultiReport,
 )
 
-UTC_OFFSET = "+00:00"
-
 
 def test_feeds():
     f = FeedMetadata()
@@ -24,7 +22,7 @@ def test_feeds():
     f.updated_at = d1
     assert f.to_json() == {
         "name": "feed1",
-        "updated_at": d1.isoformat(timespec="microseconds") + UTC_OFFSET,
+        "updated_at": d1.isoformat(timespec="microseconds"),
         "groups": None,
         "enabled": None,
         "last_full_sync": None,
@@ -39,7 +37,7 @@ def test_feeds():
 
     assert f.to_json() == {
         "name": "feed1",
-        "updated_at": d1.isoformat(timespec="microseconds") + UTC_OFFSET,
+        "updated_at": d1.isoformat(timespec="microseconds"),
         "enabled": None,
         "last_full_sync": None,
         "groups": [
@@ -68,9 +66,9 @@ def test_groups():
     assert g.to_json() == {
         "name": "group",
         "enabled": True,
-        "created_at": d2.isoformat(timespec="microseconds") + UTC_OFFSET,
-        "updated_at": d1.isoformat(timespec="microseconds") + UTC_OFFSET,
-        "last_sync": d1.isoformat(timespec="microseconds") + UTC_OFFSET,
+        "created_at": d2.isoformat(timespec="microseconds"),
+        "updated_at": d1.isoformat(timespec="microseconds"),
+        "last_sync": d1.isoformat(timespec="microseconds"),
         "record_count": 0,
     }
 
