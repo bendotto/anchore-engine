@@ -17,7 +17,7 @@ def catalog_image(image, unpackdir):
     return convert_syft_to_engine(all_results, unpackdir)
 
 
-def convert_syft_to_engine(all_results, unpackdir):
+def convert_syft_to_engine(all_results, unpackdir, handle_hints=True):
     """
     Do the conversion from syft format to engine format
 
@@ -46,11 +46,12 @@ def convert_syft_to_engine(all_results, unpackdir):
         handler = handlers_by_artifact_type[artifact["type"]]
         handler.translate_and_save_entry(findings, artifact)
 
-    # apply content hints, overriding values that are there
-    for engine_entry in content_hints(unpackdir=unpackdir):
-        pkg_type = engine_entry.get("type")
-        if pkg_type:
-            handler = handlers_by_engine_type[pkg_type]
-            handler.save_entry(findings, engine_entry)
+    if handle_hints:
+        # apply content hints, overriding values that are there
+        for engine_entry in content_hints(unpackdir=unpackdir):
+            pkg_type = engine_entry.get("type")
+            if pkg_type:
+                handler = handlers_by_engine_type[pkg_type]
+                handler.save_entry(findings, engine_entry)
 
     return defaultdict_to_dict(findings)
