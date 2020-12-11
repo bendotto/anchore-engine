@@ -1104,7 +1104,8 @@ def analyze_image(
                 image_source_meta, staging_dirs["copydir"]
             )
 
-        manifest = get_manifest_from_staging(staging_dirs)
+            manifest = get_manifest_from_staging(staging_dirs)
+
         manifest_data = json.loads(manifest)
 
         if image_source != "docker-archive":
