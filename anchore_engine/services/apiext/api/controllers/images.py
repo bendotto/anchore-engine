@@ -894,25 +894,22 @@ def add_image(image, force=False, autosubscribe=False):
 
         source = normalized["source"]
 
-<<<<<<< HEAD
-        return_object = analyze_image(
-            ApiRequestContextProxy.namespace(),
-            source,
-            force,
-            enable_subscriptions,
-            image.get("annotations"),
-        )
-        httpcode = 200
-=======
-        if source.get('import'):
-            client = internal_client_for(CatalogClient, userId=ApiRequestContextProxy.namespace())
-            return_object = client.import_image(source.get('import'))
+        if source.get("import"):
+            client = internal_client_for(
+                CatalogClient, userId=ApiRequestContextProxy.namespace()
+            )
+            return_object = client.import_image(source.get("import"))
             httpcode = 200
         else:
-            return_object = analyze_image(ApiRequestContextProxy.namespace(), source, force, enable_subscriptions, image.get('annotations'))
+            return_object = analyze_image(
+                ApiRequestContextProxy.namespace(),
+                source,
+                force,
+                enable_subscriptions,
+                image.get("annotations"),
+            )
             httpcode = 200
 
->>>>>>> Image import working using external api and call to catalog
     except api_exceptions.AnchoreApiError as err:
         raise err
         # httpcode = err.__response_code__
