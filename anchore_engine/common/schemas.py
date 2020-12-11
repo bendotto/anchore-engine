@@ -17,6 +17,20 @@ ValidationError = marshmallow.ValidationError
 # fields.DateTime.DEFAULT_FORMAT = "rfc3339"
 
 
+datetime_deserializations = fields.DateTime.DESERIALIZATION_FUNCS
+datetime_deserializations["rfc3339"] = rfc3339str_to_datetime
+
+datetime_serializations = fields.DateTime.SERIALIZATION_FUNCS
+datetime_serializations["rfc3339"] = datetime_to_rfc3339
+
+
+class RFC3339DateTime(fields.DateTime):
+    DESERIALIZATION_FUNCS = datetime_deserializations
+    SERIALIZATION_FUNCS = datetime_serializations
+
+    DEFAULT_FORMAT = "rfc3339"
+
+
 # TODO: This is not enforced in the interface yet, but should be the input and return type for queue operations in this API
 class JsonSerializable:
     """
